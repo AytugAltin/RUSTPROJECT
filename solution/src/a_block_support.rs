@@ -26,17 +26,23 @@
 // TODO: this should be removed once you are done implementing this file. You can remove all of the
 // TODO: below imports you do not need, as they are simply there to illustrate how you can import things.
 #![allow(unused_imports)]
-// We import std::error and std::format so we can say error::Error instead of
-// std::error::Error, etc.
-use std::error;
-use std::fmt;
+
+
 
 // If you want to import things from the API crate, do so as follows:
 use cplfs_api::fs::{FileSysSupport, BlockSupport};
 use cplfs_api::types::{Block, Inode, SuperBlock, DInode,DINODE_SIZE};
-use std::path::Path;
-use cplfs_api::controller::Device;
+use std::path::{Path, PathBuf};
+use cplfs_api::controller::{Device, DiskState};
 use std::fmt::Formatter;
+use std::fs::File;
+
+use cplfs_api::error_given::APIError;
+use cplfs_api::error_given;
+use thiserror::Error;
+
+use crate::filesystem_errors::FileSystemError;
+
 
 /// You are free to choose the name for your file system. As we will use
 /// automated tests when grading your assignment, indicate here the name of
@@ -46,32 +52,26 @@ use std::fmt::Formatter;
 pub type FSName = FileSystem;
 
 
+
+
 pub struct FileSystem{
 
-    pub superblock: SuperBlock
-
-}
-#[derive(Debug)]
-pub enum FileSystemError {
-    InvalidSuperBlock(SuperBlock)
-    //TODO insert possible stuff
+    pub superblock: SuperBlock,
+    pub device: Device,
 }
 
-impl fmt::Display for FileSystemError{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match *self{
-            FileSystemError::InvalidSuperBlock(SuperBlock) =>write!(f,"Invalid superblock")
+impl FileSystem{
+    pub fn create_filesystem( superblock: SuperBlock,device: Device) -> FileSystem{
+        FileSystem{
+            superblock,
+            device
         }
     }
 }
 
-impl error::Error for FileSystemError{
-    
-}
 
 impl FileSysSupport for FileSystem{
     type Error = FileSystemError;
-
 
 
     fn sb_valid(sb: &SuperBlock) -> bool {
@@ -94,17 +94,17 @@ impl FileSysSupport for FileSystem{
             //if number is fraction add another block
         }
 
-        if ! sb.inodestart  + ninodeblocks <= sb.bmapstart {
+        if ! (sb.inodestart  + ninodeblocks <= sb.bmapstart) {
             // check overlap between inodes region and bitmap region
             return false
         }
 
-        if ! sb.bmapstart  + nbitmapblocks <= sb.datastart {
+        if ! (sb.bmapstart  + nbitmapblocks <= sb.datastart) {
             // check overlap between bitmap and data region
             return false
         }
 
-        if ! sb.datastart  + sb.ndatablocks < sb.block_size {
+        if ! (sb.datastart  + sb.ndatablocks < sb.block_size) {
             // check overlap between bitmap and data region
             return false
         }
@@ -122,7 +122,18 @@ impl FileSysSupport for FileSystem{
             Err(FileSystemError::InvalidSuperBlock(*sb)) //TODO check this pointer?
         }
         else  {
-            unimplemented!();
+            let  device_result = Device::new(path,sb.block_size,sb.nblocks);
+
+            match device_result {
+                Ok(device) =>{
+                    let fs = FileSystem::create_filesystem(*sb,device);
+                    Ok(fs)
+                },
+                Err(e) => Err(FileSystemError::PathError(e))
+
+            }
+
+
         }
     }
 
@@ -165,10 +176,6 @@ impl BlockSupport for FileSystem {
     }
 }
 
-
-
-
-
 // Here we define a submodule, called `my_tests`, that will contain your unit
 // tests for this module.
 // **TODO** define your own tests here. I have written down one test as an example of the syntax.
@@ -180,15 +187,79 @@ impl BlockSupport for FileSystem {
 // To learn more about testing, check the Testing chapter of the Rust
 // Book: https://doc.rust-lang.org/book/testing.html
 #[cfg(test)]
-mod my_tests {
-    use crate::a_block_support::FileSystem;
+mod Superblock_Tests {
 
+
+    use super::FSName;
+    use cplfs_api::controller::Device;
+    use cplfs_api::fs::{BlockSupport, FileSysSupport};
+    use cplfs_api::types::SuperBlock;
+    use std::path::{Path, PathBuf};
     #[test]
-    fn trivial_unit_test() {
-        assert!(FileSystem::mkfs(&path, &SUPERBLOCK_BAD_INODES).is_err());
-        assert!(FSName::mkfs(&path, &SUPERBLOCK_BAD_ORDER).is_err());
 
+    fn trivial_unit_test() {
+        assert_eq!(FSName::sb_valid(&SUPERBLOCK_oversized), false);
+        assert_eq!(FSName::sb_valid(&SUPERBLOCK_oversized_2), true);
+        assert_eq!(FSName::sb_valid(&SUPERBLOCK_BAD_1), true);
+        assert_eq!(FSName::sb_valid(&SUPERBLOCK_BAD_2), true);
+        assert_eq!(FSName::sb_valid(&SUPERBLOCK_BAD_3), true);
     }
+
+    static BLOCK_SIZE: u64 = 1000;
+    static NBLOCKS: u64 = 10;
+
+    static SUPERBLOCK_oversized: SuperBlock = SuperBlock {
+        block_size: BLOCK_SIZE,
+        nblocks: NBLOCKS,
+        ninodes: 1000,
+        inodestart: 1,
+        ndatablocks: 5,
+        bmapstart: 5,
+        datastart: 6,
+    };
+
+    static SUPERBLOCK_oversized_2: SuperBlock = SuperBlock {
+        block_size: BLOCK_SIZE,
+        nblocks: NBLOCKS,
+        ninodes: 6,
+        inodestart: 1,
+        ndatablocks: 4,
+        bmapstart: 5,
+        datastart: 6,
+    };
+
+    static SUPERBLOCK_BAD_1: SuperBlock = SuperBlock {
+        block_size: BLOCK_SIZE,
+        nblocks: NBLOCKS,
+        ninodes: 6,
+        inodestart: 1,
+        ndatablocks: 2,
+        bmapstart: 5,
+        datastart: 6,
+    };
+
+    static SUPERBLOCK_BAD_2: SuperBlock = SuperBlock {
+        block_size: BLOCK_SIZE,
+        nblocks: NBLOCKS,
+        ninodes: 1,
+        inodestart: 1,
+        ndatablocks: 5,
+        bmapstart: 5,
+        datastart: 6,
+    };
+
+    static SUPERBLOCK_BAD_3: SuperBlock = SuperBlock {
+        block_size: BLOCK_SIZE,
+        nblocks: NBLOCKS,
+        ninodes: 1,
+        inodestart: 1,
+        ndatablocks: 5,
+        bmapstart: 4,
+        datastart: 5,
+    };
+
+
+
 }
 
 // If you want to write more complicated tests that create actual files on your system, take a look at `utils.rs` in the assignment, and how it is used in the `fs_tests` folder to perform the tests. I have imported it below to show you how it can be used.
@@ -199,6 +270,10 @@ mod test_with_utils {
 
     #[path = "utils.rs"]
     mod utils;
+
+
+
+
 
     #[test]
     fn unit_test() {
