@@ -5,13 +5,17 @@ use std::fmt;
 use cplfs_api::types::SuperBlock;
 use cplfs_api::error_given::APIError;
 use std::fmt::Formatter;
+use std::cell::RefCell;
 
 #[derive(Error,Debug)]
 pub enum FileSystemError{
     InvalidSuperBlock(SuperBlock),
     //TODO insert possible stuff
 
-    PathError(#[from] APIError),// TODO maybe needs variable path
+
+    DeviceAPIError(#[from] APIError),
+    DeviceNotSet(),
+    AllocationError()
 }
 
 
@@ -20,10 +24,14 @@ impl fmt::Display for FileSystemError{
         match self{ //TODO add parameters in text
             FileSystemError::InvalidSuperBlock(SuperBlock) =>
                 write!(f,"Invalid superblock"),
-            /*FileSystemError::PathAlreadyExists(path) =>
-                write!(f,"Invalid path or allready in use")*/ //todo remove or use
-            FileSystemError::PathError(api_error) =>
-                write!(f,"Invalid path or already in use")
+            FileSystemError::DeviceAPIError(api_error) =>
+                write!(f,"Device API error"),
+            FileSystemError::DeviceNotSet() =>
+                write!(f,"FileSystem does not have a device set"),
+            FileSystemError::AllocationError() =>
+                write!(f,"No free room was found to allocate!")
         }
     }
 }
+
+

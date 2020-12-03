@@ -34,7 +34,7 @@ use cplfs_api::fs::{FileSysSupport, BlockSupport};
 use cplfs_api::types::{Block, Inode, SuperBlock, DInode,DINODE_SIZE};
 use std::path::{Path, PathBuf};
 use cplfs_api::controller::{Device, DiskState};
-use std::fmt::Formatter;
+use std::fmt::{Formatter, Error};
 use std::fs::File;
 
 use cplfs_api::error_given::APIError;
@@ -42,6 +42,12 @@ use cplfs_api::error_given;
 use thiserror::Error;
 
 use crate::filesystem_errors::FileSystemError;
+use std::io::BufRead;
+use crate::helpers::*;
+use std::borrow::Borrow;
+
+
+#[path = "helpers.rs"]
 
 
 /// You are free to choose the name for your file system. As we will use
@@ -52,19 +58,27 @@ use crate::filesystem_errors::FileSystemError;
 pub type FSName = FileSystem;
 
 
-
-
+#[derive(Debug)]
 pub struct FileSystem{
-
     pub superblock: SuperBlock,
-    pub device: Device,
+    pub device: Option<Device>,
 }
 
+
 impl FileSystem{
-    pub fn create_filesystem( superblock: SuperBlock,device: Device) -> FileSystem{
+    pub fn create_filesystem( superblock: SuperBlock,device: Option<Device>) -> FileSystem{
         FileSystem{
             superblock,
             device
+        }
+    }
+
+
+    // TODO REMOVE
+    pub fn get_device(self) ->Result<Device,FileSystemError>{
+        match self.device {
+            Some(dev) => Ok(dev),
+            None => Err(FileSystemError::DeviceNotSet())
         }
     }
 }
@@ -87,12 +101,7 @@ impl FileSysSupport for FileSystem{
             //if number is fraction add another block
         }
 
-        let mut nbitmapblocks = sb.ndatablocks / sb.block_size  ;
-
-        if  sb.ndatablocks % sb.block_size  != 0{
-            nbitmapblocks = nbitmapblocks +1;
-            //if number is fraction add another block
-        }
+        let mut nbitmapblocks = get_nbitmapblocks(sb);
 
         if ! (sb.inodestart  + ninodeblocks <= sb.bmapstart) {
             // check overlap between inodes region and bitmap region
@@ -125,54 +134,139 @@ impl FileSysSupport for FileSystem{
             let  device_result = Device::new(path,sb.block_size,sb.nblocks);
 
             match device_result {
-                Ok(device) =>{
-                    let fs = FileSystem::create_filesystem(*sb,device);
+                Ok(mut device) =>{
+                    //place superblock at index 0
+
+                    write_sb(sb, &mut device);
+                    allocate_inoderegion(&sb, &device);
+                    allocate_bitmapregion(&sb, &mut device);
+                    allocate_dataregion(&sb, &mut device);
+                    let fs = FileSystem::mountfs(device)?;
                     Ok(fs)
                 },
-                Err(e) => Err(FileSystemError::PathError(e))
-
+                Err(e) => Err(FileSystemError::DeviceAPIError(e))
             }
-
-
         }
     }
 
     fn mountfs(dev: Device) -> Result<Self, Self::Error> {
-        unimplemented!()
+
+        match dev.read_block(0) {
+            Ok(mut block) =>
+                {
+                    let mut sb = &block.deserialize_from::<SuperBlock>(0)?;
+                    if FSName::sb_valid(sb)
+                        && dev.block_size == sb.block_size
+                        && dev.nblocks == sb.nblocks
+                    {
+                        let fs = FileSystem::create_filesystem(*sb, Some(dev));
+                        Ok(fs)
+                    }
+                    else{
+
+                        Err(FileSystemError::InvalidSuperBlock(*sb)) //TODO check this pointer?
+                    }
+                }
+            ,
+            Err(e) => Err(FileSystemError::DeviceAPIError(e))
+        }
+
+
+
     }
 
-    fn unmountfs(self) -> Device {
-        unimplemented!()
+    fn unmountfs(mut self) -> Device {
+        let deviceoption = self.device.take();
+        let device = deviceoption.unwrap();
+        return device;
+
     }
 }
 
 impl BlockSupport for FileSystem {
+
     fn b_get(&self, i: u64) -> Result<Block, Self::Error> {
-        unimplemented!()
+        let dev = self.device.as_ref().ok_or_else(||FileSystemError::DeviceNotSet())?;
+        match dev.read_block(i) {
+            Ok(mut block) => Ok(block),
+            Err(e) => Err(FileSystemError::DeviceAPIError(e))
+        }
     }
 
     fn b_put(&mut self, b: &Block) -> Result<(), Self::Error> {
-        unimplemented!()
+        let mut dev = self.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
+        match dev.write_block(&b) {
+            Ok(mut block) => Ok(block),
+            Err(e) => Err(FileSystemError::DeviceAPIError(e))
+        }
     }
 
     fn b_free(&mut self, i: u64) -> Result<(), Self::Error> {
+        let dev = self.device.as_ref().ok_or_else(||FileSystemError::DeviceNotSet())?;
+        set_bitmapbit(&self.sup_get()?, dev,i,0);
         unimplemented!()
     }
 
     fn b_zero(&mut self, i: u64) -> Result<(), Self::Error> {
-        unimplemented!()
+        let datablock_index = i + self.superblock.datastart;
+        let mut block = self.b_get(datablock_index)?;
+        let mut newzeroblock = Block::new_zero(datablock_index,block.len());
+        self.b_put(&newzeroblock)?;
+
+        Ok(())
+        // TODO geen idee of dit juist is
     }
 
     fn b_alloc(&mut self) -> Result<u64, Self::Error> {
-        unimplemented!()
+
+        let mut nbitmapblocks = get_nbitmapblocks(&self.superblock);
+        let mut bmstart_index = self.superblock.bmapstart; // get the index
+        let mut block ; // get the first block
+        let mut byte_array = &mut []; // get the block's array
+        let mut byteindex;//block index
+
+        for blockindex in 0..nbitmapblocks{
+            block = self.b_get(bmstart_index +blockindex)?; //next block
+            //byte_array = block.contents_as_ref(); //get the block's array
+            block.read_data(byte_array,0)?;
+            byteindex = get_bytesarray_free_index(byte_array);
+            if byteindex.is_err() {
+                // HERE WE ARE LOOKING FOR THE NEXT BLOCK
+                bmstart_index += 1; //next block index
+            }
+            else{
+                // The current bm_block has a free spot
+                let byteindex = byteindex.unwrap(); //get the index of the byte that has a free spot
+                let mut byte = byte_array.get_mut(usize::from(byteindex)).unwrap();
+                let bitindex = 8 - 1 -  byte.trailing_ones(); //moves the 1 to the correct position
+                let mut mutator = 0b00000001u8 << byte.trailing_ones(); //moves the 1 to the correct position
+
+                byte = &mut (*byte | mutator);
+
+                let byteindex:u64 = u64::from(byteindex);
+
+                let datablockindex = blockindex* self.superblock.block_size * 8 + (byteindex)*8 + u64::from(bitindex);
+
+                self.b_zero(datablockindex);
+
+                return Ok(datablockindex)
+            }
+        }
+        Err(FileSystemError::AllocationError())
+
     }
 
     fn sup_get(&self) -> Result<SuperBlock, Self::Error> {
-        unimplemented!()
+        let block = self.b_get(0)?;
+        let sb = block.deserialize_from::<SuperBlock>(0)?;
+        Ok(sb)
     }
 
     fn sup_put(&mut self, sup: &SuperBlock) -> Result<(), Self::Error> {
-        unimplemented!()
+        let mut firstblock = self.b_get(0)?;
+        firstblock.serialize_into(&sup, 0)?;
+        self.b_put(&firstblock)?;
+        Ok(()) //TODO check return type, is this oke to do or not?
     }
 }
 

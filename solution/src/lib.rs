@@ -62,5 +62,6 @@ pub mod e_inode_RW_support;
 pub mod f_indirect_inodes;
 pub mod g_caching_inodes;
 pub mod filesystem_errors; //TODO moet deze erbij of niet
+pub mod helpers; //TODO moet deze erbij of niet
 
 // Declare additional modules below or declare them in other modules.
