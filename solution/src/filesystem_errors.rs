@@ -15,7 +15,9 @@ pub enum FileSystemError{
 
     DeviceAPIError(#[from] APIError),
     DeviceNotSet(),
-    AllocationError()
+    AllocationError(),
+    AllreadyFreeError(),
+    IndexOutOfBounds()
 }
 
 
@@ -29,7 +31,11 @@ impl fmt::Display for FileSystemError{
             FileSystemError::DeviceNotSet() =>
                 write!(f,"FileSystem does not have a device set"),
             FileSystemError::AllocationError() =>
-                write!(f,"No free room was found to allocate!")
+                write!(f,"No free room was found to allocate!"),
+            FileSystemError::AllreadyFreeError() =>
+                write!(f,"Cannot free the block at the requested index, it is already free"),
+            FileSystemError::IndexOutOfBounds() =>
+                write!(f,"Index Out of bounds!")
         }
     }
 }

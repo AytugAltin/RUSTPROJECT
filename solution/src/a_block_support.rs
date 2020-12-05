@@ -187,24 +187,17 @@ impl BlockSupport for FileSystem {
 
     fn b_get(&self, i: u64) -> Result<Block, Self::Error> {
         let dev = self.device.as_ref().ok_or_else(||FileSystemError::DeviceNotSet())?;
-        match dev.read_block(i) {
-            Ok(mut block) => Ok(block),
-            Err(e) => Err(FileSystemError::DeviceAPIError(e))
-        }
+        return Ok(read_block(dev,i)?);
     }
 
     fn b_put(&mut self, b: &Block) -> Result<(), Self::Error> {
         let mut dev = self.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
-        match dev.write_block(&b) {
-            Ok(mut block) => Ok(block),
-            Err(e) => Err(FileSystemError::DeviceAPIError(e))
-        }
+        return Ok(write_block(dev,b)?);
     }
 
     fn b_free(&mut self, i: u64) -> Result<(), Self::Error> {
-        let dev = self.device.as_ref().ok_or_else(||FileSystemError::DeviceNotSet())?;
-        set_bitmapbit(&self.sup_get()?, dev,i,0);
-        unimplemented!()
+        set_bitmapbit(self, i, false)?;
+        Ok(())
     }
 
     fn b_zero(&mut self, i: u64) -> Result<(), Self::Error> {
@@ -214,42 +207,47 @@ impl BlockSupport for FileSystem {
         self.b_put(&newzeroblock)?;
 
         Ok(())
-        // TODO geen idee of dit juist is
     }
 
     fn b_alloc(&mut self) -> Result<u64, Self::Error> {
 
-        let mut nbitmapblocks = get_nbitmapblocks(&self.superblock);
+        let  nbitmapblocks = get_nbitmapblocks(&self.superblock);
         let mut bmstart_index = self.superblock.bmapstart; // get the index
         let mut block ; // get the first block
-        let mut byte_array = &mut []; // get the block's array
+        let mut byte_array;// create an empty data buffer
         let mut byteindex;//block index
 
         for blockindex in 0..nbitmapblocks{
             block = self.b_get(bmstart_index +blockindex)?; //next block
             //byte_array = block.contents_as_ref(); //get the block's array
-            block.read_data(byte_array,0)?;
+            byte_array = block.contents_as_ref();
             byteindex = get_bytesarray_free_index(byte_array);
             if byteindex.is_err() {
                 // HERE WE ARE LOOKING FOR THE NEXT BLOCK
                 bmstart_index += 1; //next block index
             }
-            else{
+            else {
                 // The current bm_block has a free spot
                 let byteindex = byteindex.unwrap(); //get the index of the byte that has a free spot
-                let mut byte = byte_array.get_mut(usize::from(byteindex)).unwrap();
-                let bitindex = 8 - 1 -  byte.trailing_ones(); //moves the 1 to the correct position
+                let byte = byte_array.get(usize::from(byteindex)).unwrap();
+                let bitindex = 8 - 1 - byte.trailing_ones(); //moves the 1 to the correct position
                 let mut mutator = 0b00000001u8 << byte.trailing_ones(); //moves the 1 to the correct position
 
-                byte = &mut (*byte | mutator);
+                let to_write_byte = &[(*byte | mutator)];
 
-                let byteindex:u64 = u64::from(byteindex);
 
-                let datablockindex = blockindex* self.superblock.block_size * 8 + (byteindex)*8 + u64::from(bitindex);
+                block.write_data(to_write_byte, byteindex as u64)?;
 
-                self.b_zero(datablockindex);
 
-                return Ok(datablockindex)
+                let byteindex: u64 = u64::from(byteindex);
+                let datablockindex = blockindex * self.superblock.block_size * 8 + (byteindex) * 8 + u64::from(7 - bitindex);
+
+                if (datablockindex < self.superblock.ndatablocks) {
+                    self.b_zero(datablockindex);
+                    self.b_put(&block);
+                    return Ok(datablockindex)
+                }
+
             }
         }
         Err(FileSystemError::AllocationError())
