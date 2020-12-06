@@ -2,15 +2,18 @@
 
 //Some more general testing utilities
 use cplfs_api::controller::Device;
-use cplfs_api::types::{Block, SuperBlock, Buffer};
+use cplfs_api::types::{Block, SuperBlock, Buffer, DInode, DINODE_SIZE, Inode, FType, InodeLike};
 use std::fs::{create_dir_all, remove_dir, remove_file, read};
 use std::path::{Path, PathBuf};
 use crate::a_block_support::FileSystem;
-use cplfs_api::fs::BlockSupport;
+use cplfs_api::fs::{BlockSupport, InodeSupport};
 
 use thiserror::Error;
 use anyhow::Error;
 use crate::filesystem_errors::FileSystemError;
+use cplfs_api::types::FType::TFree;
+
+// region PART_A
 
 pub fn write_sb(sb: &SuperBlock, dev: &mut Device) -> Result<(), Error> {
     let mut firstblock = dev.read_block(0)?;
@@ -25,15 +28,41 @@ pub fn allocate_bitmapregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), Er
     let end = sb.bmapstart + nbitmapblocks;
     for i in start..end{
         let block = Block::new_zero(i,sb.block_size);
-        //let mut mutator = &[0b00000001u8];
-        //block.write_data(& 0b00000000u8,0)
         dev.write_block(&block)?;
     }
     Ok(())
 }
 
-pub fn allocate_inoderegion(sb: &SuperBlock,dev: &Device){
+pub fn get_nbitmapblocks(sb: &SuperBlock)-> u64{
+    let mut nbitmapblocks = sb.ndatablocks / sb.block_size  ;
 
+    if  sb.ndatablocks % sb.block_size  != 0{
+        nbitmapblocks = nbitmapblocks +1;
+        //if number is fraction add another block
+    }
+    return nbitmapblocks;
+}
+
+pub fn get_ninodeblocks(sb: &SuperBlock)-> u64{
+    let inodes_per_block =  sb.block_size / *DINODE_SIZE;
+    let mut ninodeblocks = sb.ninodes / inodes_per_block;
+    //Calculate the amount of blocks needed for Inode
+    if  sb.ninodes % inodes_per_block != 0{
+        ninodeblocks = ninodeblocks +1;
+        //if number is fraction of a block ,then add another block
+    }
+    return ninodeblocks;
+}
+
+pub fn allocate_inoderegionblocks(sb: &SuperBlock, dev: &mut Device) -> Result<(), Error>{
+    let ninodeblocks = sb.ninodes;
+    let start = sb.inodestart;
+    let end = sb.inodestart + ninodeblocks;
+    for i in start..end{
+        let block = Block::new_zero(i,sb.block_size);
+        dev.write_block(&block)?;
+    }
+    Ok(())
 }
 
 pub fn allocate_dataregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), Error>{
@@ -141,17 +170,6 @@ pub fn write_block(dev: &mut Device, b: &Block) -> Result<(), FileSystemError> {
 }
 
 
-pub fn get_nbitmapblocks(sb: &SuperBlock)-> u64{
-    let mut nbitmapblocks = sb.ndatablocks / sb.block_size  ;
-
-    if  sb.ndatablocks % sb.block_size  != 0{
-        nbitmapblocks = nbitmapblocks +1;
-        //if number is fraction add another block
-    }
-    return nbitmapblocks;
-}
-
-
 pub fn get_bytesarray_free_index(byte_array: &[u8])-> Result<u16, FileSystemError>{
     let mut byte_index = 0;
 
@@ -163,3 +181,28 @@ pub fn get_bytesarray_free_index(byte_array: &[u8])-> Result<u16, FileSystemErro
     }
     Err(FileSystemError::AllocationError())
 }
+
+//endregion
+
+
+// region PART_B
+
+pub fn allocate_inodes(fs: & mut FileSystem) -> Result<(), FileSystemError> {
+
+    let i1 = InodeLike::new(i,
+        &FType::TFree,
+        i,
+        (2.5 * (BLOCK_SIZE as f32)) as u64,
+        &[],
+    )?;
+
+    for i in 0..fs.superblock.ninodes {
+        let mut inode = &Inode::new(i, Default::default());
+        fs.i_put(inode)?;
+    }
+    Ok(())
+
+}
+
+
+//endregion

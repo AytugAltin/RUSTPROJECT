@@ -93,13 +93,7 @@ impl FileSysSupport for FileSystem{
         if !sb.inodestart == 1 { // Inode needs to start at index 1
             return false
         }
-        let mut ninodeblocks = sb.ninodes * *DINODE_SIZE / sb.block_size;
-        //Calculate the amount of blocks needed for Inode
-
-        if  sb.ninodes * *DINODE_SIZE % sb.block_size != 0{
-            ninodeblocks = ninodeblocks +1;
-            //if number is fraction add another block
-        }
+        let mut ninodeblocks = get_ninodeblocks(sb);
 
         let mut nbitmapblocks = get_nbitmapblocks(sb);
 
@@ -138,10 +132,12 @@ impl FileSysSupport for FileSystem{
                     //place superblock at index 0
 
                     write_sb(sb, &mut device);
-                    allocate_inoderegion(&sb, &device);
+                    allocate_inoderegionblocks(&sb, &mut device);
                     allocate_bitmapregion(&sb, &mut device);
                     allocate_dataregion(&sb, &mut device);
-                    let fs = FileSystem::mountfs(device)?;
+                    let mut fs = FileSystem::mountfs(device)?;
+
+                    allocate_inodes(&mut fs);
                     Ok(fs)
                 },
                 Err(e) => Err(FileSystemError::DeviceAPIError(e))
