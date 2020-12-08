@@ -2,7 +2,7 @@
 
 //Some more general testing utilities
 use cplfs_api::controller::Device;
-use cplfs_api::types::{Block, SuperBlock, Buffer, DInode, DINODE_SIZE, Inode, FType, InodeLike};
+use cplfs_api::types::{Block, SuperBlock, Buffer, DInode, DINODE_SIZE, Inode, FType, InodeLike,DIRENTRY_SIZE, DIRNAME_SIZE, DirEntry};
 use std::fs::{create_dir_all, remove_dir, remove_file, read};
 use std::path::{Path, PathBuf};
 use crate::a_block_support::FileSystem;
@@ -12,6 +12,9 @@ use thiserror::Error;
 use anyhow::Error;
 use crate::filesystem_errors::FileSystemError;
 use cplfs_api::types::FType::TFree;
+use crate::b_inode_support::FSName;
+use std::borrow::Borrow;
+use std::convert::TryInto;
 
 // region PART_A
 
@@ -189,20 +192,144 @@ pub fn get_bytesarray_free_index(byte_array: &[u8])-> Result<u16, FileSystemErro
 
 pub fn allocate_inodes(fs: & mut FileSystem) -> Result<(), FileSystemError> {
 
-    let i1 = InodeLike::new(i,
-        &FType::TFree,
-        i,
-        (2.5 * (BLOCK_SIZE as f32)) as u64,
-        &[],
-    )?;
 
     for i in 0..fs.superblock.ninodes {
-        let mut inode = &Inode::new(i, Default::default());
-        fs.i_put(inode)?;
+        let i1 = <<FSName as InodeSupport>::Inode as InodeLike>::new(
+            i,
+            &FType::TFree,
+            0,
+            0,
+            &[],
+        ).unwrap();
+        //let mut inode = &Inode::new(i, i1);
+        fs.i_put(&i1)?;
     }
+
+    allocate_rootdirectory(fs);
     Ok(())
+}
+
+
+pub fn get_inode_block(fs: & FileSystem,i: u64,inodes_per_block:u64) -> Result<Block, FileSystemError>
+{
+    let mut block;
+    if i < fs.superblock.ninodes {
+        let block_index = i / inodes_per_block;
+        block = fs.b_get(fs.superblock.inodestart + block_index)?;
+        Ok(block)
+    }
+    else{
+        Err(FileSystemError::IndexOutOfBounds())
+    }
+}
+
+
+
+pub fn trunc(fs: &mut FileSystem, ino: &mut Inode ) -> Result<(), FileSystemError> {
+
+    let mut size = get_inode_block_size(fs,ino);
+
+    for j in 0..size as usize {
+        let data_block = ino.disk_node.direct_blocks[j];
+        if data_block >= fs.superblock.datastart && data_block < (fs.superblock.datastart + fs.superblock.ndatablocks) {
+            let index = data_block - fs.superblock.datastart;
+            fs.b_free(index)?;
+            ino.disk_node.direct_blocks[j] = 0;
+        }
+    }
+
+    ino.disk_node.size = 0;
+
+    Ok(())
+}
+
+pub fn get_inode_block_size(fs:  &FileSystem, ino:  &Inode ) -> u64 {
+    let mut size = ino.get_size() / fs.superblock.block_size;
+    if ino.get_size() % fs.superblock.block_size != 0 {
+        size = size + 1;
+    }
+    return size;
+
 
 }
+
+pub fn get_direntries(fs: & FileSystem, inode: & Inode) -> Result<Vec<(DirEntry, u64)>, FileSystemError> {
+
+    let mut list : Vec<(DirEntry, u64)> = vec![];
+
+    let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
+    let mut size = get_inode_block_size(fs ,inode);
+
+    // loop over entries
+    for j in 0..size as usize{
+        let data_block = inode.disk_node.direct_blocks[j];
+        if data_block >= fs.superblock.datastart && data_block < (fs.superblock.datastart + fs.superblock.ndatablocks) {
+            let index = data_block - fs.superblock.datastart;
+            let block = fs.b_get(index)?;
+
+            for index in 0..dirs_per_block{
+                let block_dir_offset = index * *DIRENTRY_SIZE;
+                let dir = block.deserialize_from::<DirEntry>(block_dir_offset)?;
+                list.push((dir,block_dir_offset));
+            }
+        }
+    }
+
+    Ok(list)
+}
+
+pub fn write_dir(fs: & FileSystem, inode: & Inode, dir: &DirEntry){
+
+}
+
+
+
+//endregion
+
+
+
+//region PART_C
+
+pub fn to_char_array(s: &str) -> Result< [char;DIRNAME_SIZE], Error> {
+    let mut char_vec: Vec<char> = s.chars().collect();
+
+    if char_vec.len() < DIRNAME_SIZE {
+        char_vec.push('\0');
+    }
+
+    char_vec.resize(DIRNAME_SIZE,'\0');
+    let slice = char_vec.as_slice();
+
+
+    match slice.try_into() {
+        Ok(result) => Ok(result),
+        Err(e) => Err(Error::from(e))
+    }
+}
+
+
+pub fn allocate_rootdirectory(fs: & mut FileSystem) -> Result<(), FileSystemError> {
+    let i1 = <<FSName as InodeSupport>::Inode as InodeLike>::new(
+        1,
+        &FType::TDir,
+        0,
+        0,
+        &[],
+    ).unwrap();
+    //let mut inode = &Inode::new(i, i1);
+    fs.i_put(&i1)?;
+    Ok(())
+}
+
+
+pub fn is_valid_dirname(name: &str)-> bool{
+    return  name.replace(".", "0").chars().all(char::is_alphanumeric)
+}
+
+
+
+
+
 
 
 //endregion

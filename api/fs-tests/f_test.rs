@@ -95,7 +95,7 @@ fn free() {
     my_fs.i_free(1).unwrap();
     //shouldve deallocated all
     for i in 0..30 {
-        assert!(my_fs.i_free(i).is_err()); //not allocated
+        assert!(my_fs.b_free(i).is_err()); //not allocated
     }
 
     let dev = my_fs.unmountfs();

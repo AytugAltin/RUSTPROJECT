@@ -17,7 +17,9 @@ pub enum FileSystemError{
     DeviceNotSet(),
     AllocationError(),
     AllreadyFreeError(),
-    IndexOutOfBounds()
+    IndexOutOfBounds(),
+    InvalidDirname(),
+    INodeNotFreeable()
 }
 
 
@@ -35,7 +37,11 @@ impl fmt::Display for FileSystemError{
             FileSystemError::AllreadyFreeError() =>
                 write!(f,"Cannot free the block at the requested index, it is already free"),
             FileSystemError::IndexOutOfBounds() =>
-                write!(f,"Index Out of bounds!")
+                write!(f,"Index Out of bounds!"),
+            FileSystemError::INodeNotFreeable() =>
+                write!(f,"Inode is not freeable, it still has links in the filesystem"),
+            FileSystemError::InvalidDirname() =>
+                write!(f,"The Provided directory name is not valid or too long or does contain illegal characters")
         }
     }
 }

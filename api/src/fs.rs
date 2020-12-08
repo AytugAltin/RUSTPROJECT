@@ -197,7 +197,8 @@ pub trait InodeRWSupport: InodeSupport {
     /// Write `n` bytes of data from the given buffer `buff` into the inode `inode`, starting from byte offset `off`
     /// If the end of the file is reached while writing, **continue writing**.
     /// If necessary, start allocating extra blocks to expand the file and continue writing into the new blocks.
-    /// However, returns 0 and does not write anything in case the provided offset falls outside of the file's bounds.
+    /// Allows writes to start at index `inode.get_size()`.
+    /// By contrast, returns an error and does not write anything in case the provided starting index falls further outside of the file's bounds.
     /// If the inode changes while writing, do not forget to write it back to the disk too.
     /// Returns an error if `buf` cannot hold at least `n` bytes of data.
     /// If the write would make the inode exceed its maximum possible size, do nothing and return an error.
@@ -242,8 +243,6 @@ pub trait DirectorySupport: InodeSupport {
     /// If found, return the `inode` corresponding to this directory entry, and the byte offset (from the start of the inode contents) it was found at, as a pair.
     /// Only inspects directory entries that fall within the `size` of the given `inode`. Errors if the given `inode` is not of directory type.
     /// If the entry is not found, return a suitable error that you can handle later, in the implementation of `dirlink` below.
-    ///
-    /// NOTE: self is mutably borrowed here because might want to call iget
     fn dirlookup(&self, inode: &Self::Inode, name: &str)
         -> Result<(Self::Inode, u64), Self::Error>;
 

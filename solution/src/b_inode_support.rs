@@ -25,8 +25,14 @@
 //!
 
 use crate::a_block_support::FileSystem;
-use cplfs_api::fs::{InodeSupport, FileSysSupport};
-use cplfs_api::types::{FType, Inode, InodeLike};
+use cplfs_api::fs::{InodeSupport, FileSysSupport, BlockSupport};
+use cplfs_api::types::{FType, Inode, InodeLike, DINODE_SIZE, DInode};
+use crate::filesystem_errors::FileSystemError::IndexOutOfBounds;
+use crate::helpers::{get_inode_block, trunc};
+use crate::filesystem_errors::FileSystemError;
+use std::ptr::eq;
+use std::borrow::BorrowMut;
+
 
 /// You are free to choose the name for your file system. As we will use
 /// automated tests when grading your assignment, indicate here the name of
@@ -39,27 +45,77 @@ impl InodeSupport for FileSystem {
     type Inode = Inode;
 
     fn i_get(&self, i: u64) -> Result<Self::Inode, Self::Error> {
-        unimplemented!()
+
+        let inodes_per_block = self.superblock.block_size / *DINODE_SIZE;
+        let mut block = get_inode_block(self, i,inodes_per_block)?;
+        let block_inode_offset = i % inodes_per_block * *DINODE_SIZE;
+
+        let disk_node = block.deserialize_from::<DInode>(block_inode_offset)?;
+
+        return Ok(Inode::new(i, disk_node));
     }
 
+
     fn i_put(&mut self, ino: &Self::Inode) -> Result<(), Self::Error> {
-        let inodes_per_block =  sb.block_size / *DINODE_SIZE;
-        let block_index = ino.inum / inodes_per_block;
+
+        let inodes_per_block = self.superblock.block_size / *DINODE_SIZE;
+        let mut block = get_inode_block(self, ino.inum,inodes_per_block)?;
+
+        let block_inode_offset = ino.inum % inodes_per_block * *DINODE_SIZE;
+
+        block.serialize_into(&ino.disk_node,block_inode_offset)?;
+
+        self.b_put(&block);
 
         Ok(())
-        //unimplemented!()
     }
 
     fn i_free(&mut self, i: u64) -> Result<(), Self::Error> {
-        unimplemented!()
+        let mut ino = self.i_get(i)?;
+
+        if ino.disk_node.nlink == 0 && ino.inum > 0{
+            trunc(self, ino.borrow_mut())?;
+            ino.disk_node.ft = FType::TFree;
+            self.i_put(&ino);
+            Ok(())
+        }
+        else
+        {
+            Err(FileSystemError::INodeNotFreeable())
+        }
     }
 
     fn i_alloc(&mut self, ft: FType) -> Result<u64, Self::Error> {
-        unimplemented!()
+        let inode_alloc_start = 1;
+        for i in inode_alloc_start..self.superblock.ninodes{
+            let mut ino = self.i_get(i)?;
+            if ino.get_ft() == FType::TFree{
+                ino.disk_node.ft = ft;
+                self.i_put(&ino);
+                return Ok(i)
+            }
+
+        }
+        return Err(FileSystemError::AllocationError())
     }
 
     fn i_trunc(&mut self, inode: &mut Self::Inode) -> Result<(), Self::Error> {
-        unimplemented!()
+
+        //TODO DO i need to raise error when these are not equal
+        let mut ino = self.i_get(inode.inum)?;
+
+        if &ino == inode{
+            trunc(self,inode)?;
+            self.i_put(&inode);
+        }
+        else{
+        }
+
+        Ok(())
+
+
+
+
     }
 }
 
