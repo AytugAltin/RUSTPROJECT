@@ -28,11 +28,12 @@
 use crate::a_block_support::FileSystem;
 use cplfs_api::fs::{DirectorySupport, InodeSupport, FileSysSupport, BlockSupport};
 use cplfs_api::types::{DirEntry, DIRNAME_SIZE, InodeLike, FType};
-use crate::helpers::{to_char_array, is_valid_dirname, get_inode_block_size, get_direntries, write_block, write_dir};
+use crate::helpers::{to_char_array, is_valid_dirname, get_inode_block_size, get_direntries, write_block, write_dir, compare_inodes};
 use std::fs::File;
 use crate::filesystem_errors::FileSystemError;
 use std::convert::TryInto;
 use std::ops::Index;
+use std::ptr::eq;
 
 /// You are free to choose the name for your file system. As we will use
 /// automated tests when grading your assignment, indicate here the name of
@@ -91,18 +92,22 @@ impl DirectorySupport for FileSystem {
     }
 
     fn dirlookup(&self, inode: &Self::Inode, name: &str) -> Result<(Self::Inode, u64), Self::Error> {
+        let disk_inode = self.i_get(inode.inum)?;
+        if compare_inodes(&disk_inode, inode) {
+            if inode.get_ft() != FType::TDir{
+                return Err(FileSystemError::INodeNotADirectory())
+            }
+            let mut dire_entries = get_direntries(self, inode)?;
 
-        let mut dire_entries = get_direntries(self,inode)?;
-
-        for dir in dire_entries.iter(){
-            let dir_name = FSName::get_name_str(&dir.0);
-            if dir_name.eq(name) {
-                let inode = self.i_get(dir.0.inum)?;
-                return Ok((inode,dir.1))
+            for dir in dire_entries.iter() {
+                let dir_name = FSName::get_name_str(&dir.0);
+                if dir_name.eq(name) {
+                    let inode = self.i_get(dir.0.inum)?;
+                    return Ok((inode, dir.1))
+                }
             }
         }
-
-        unimplemented!()
+        return  Err(FileSystemError::INodeNotFoundNotUpToDate());
 
     }
 

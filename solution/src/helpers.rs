@@ -253,34 +253,6 @@ pub fn get_inode_block_size(fs:  &FileSystem, ino:  &Inode ) -> u64 {
 
 }
 
-pub fn get_direntries(fs: & FileSystem, inode: & Inode) -> Result<Vec<(DirEntry, u64)>, FileSystemError> {
-
-    let mut list : Vec<(DirEntry, u64)> = vec![];
-
-    let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
-    let mut size = get_inode_block_size(fs ,inode);
-
-    // loop over entries
-    for j in 0..size as usize{
-        let data_block = inode.disk_node.direct_blocks[j];
-        if data_block >= fs.superblock.datastart && data_block < (fs.superblock.datastart + fs.superblock.ndatablocks) {
-            let index = data_block - fs.superblock.datastart;
-            let block = fs.b_get(index)?;
-
-            for index in 0..dirs_per_block{
-                let block_dir_offset = index * *DIRENTRY_SIZE;
-                let dir = block.deserialize_from::<DirEntry>(block_dir_offset)?;
-                list.push((dir,block_dir_offset));
-            }
-        }
-    }
-
-    Ok(list)
-}
-
-pub fn write_dir(fs: & FileSystem, inode: & Inode, dir: &DirEntry){
-
-}
 
 
 
@@ -325,6 +297,56 @@ pub fn allocate_rootdirectory(fs: & mut FileSystem) -> Result<(), FileSystemErro
 pub fn is_valid_dirname(name: &str)-> bool{
     return  name.replace(".", "0").chars().all(char::is_alphanumeric)
 }
+
+/**
+Get directory enties
+**/
+pub fn get_direntries(fs: & FileSystem, inode: & Inode) -> Result<Vec<(DirEntry, u64)>, FileSystemError> {
+
+    let mut list : Vec<(DirEntry, u64)> = vec![];
+
+    let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
+    let mut size = get_inode_block_size(fs ,inode);
+
+    // loop over entries
+    for j in 0..size as usize{
+        let data_block = inode.disk_node.direct_blocks[j];
+        if data_block >= fs.superblock.datastart && data_block < (fs.superblock.datastart + fs.superblock.ndatablocks) {
+            let index = data_block - fs.superblock.datastart;
+            let block = fs.b_get(index)?;
+
+            for index in 0..dirs_per_block{
+                let block_dir_offset = index * *DIRENTRY_SIZE;
+                let dir = block.deserialize_from::<DirEntry>(block_dir_offset)?;
+                list.push((dir,block_dir_offset));
+            }
+        }
+    }
+    Ok(list)
+}
+
+pub fn write_dir(fs: & FileSystem, inode: & Inode, dir: &DirEntry){
+    let nlink =inode.get_nlink();
+    let min_size_after_link = (nlink +1) * *DIRENTRY_SIZE ; // This is the size after adding the direntry
+    if min_size_after_link > inode.get_size(){
+        // needs more room
+        //step 1 check if last data block has enough room
+        let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
+        //if inode.disk_node.direct_blocks.len() *
+
+
+    }
+}
+
+pub fn compare_inodes(inodeA: &Inode, inodeb: &Inode) -> bool{
+    if (inodeA.disk_node == inodeb.disk_node) {
+        return true
+    }
+    return false
+}
+
+
+
 
 
 

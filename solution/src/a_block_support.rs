@@ -75,12 +75,12 @@ impl FileSystem{
 
 
     // TODO REMOVE
-    pub fn get_device(self) ->Result<Device,FileSystemError>{
+   /* pub fn get_device(self) ->Result<Device,FileSystemError>{
         match self.device {
             Some(dev) => Ok(dev),
             None => Err(FileSystemError::DeviceNotSet())
         }
-    }
+    }*/
 }
 
 

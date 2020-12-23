@@ -19,7 +19,9 @@ pub enum FileSystemError{
     AllreadyFreeError(),
     IndexOutOfBounds(),
     InvalidDirname(),
-    INodeNotFreeable()
+    INodeNotFreeable(),
+    INodeNotADirectory(),
+    INodeNotFoundNotUpToDate()
 }
 
 
@@ -41,7 +43,11 @@ impl fmt::Display for FileSystemError{
             FileSystemError::INodeNotFreeable() =>
                 write!(f,"Inode is not freeable, it still has links in the filesystem"),
             FileSystemError::InvalidDirname() =>
-                write!(f,"The Provided directory name is not valid or too long or does contain illegal characters")
+                write!(f,"The Provided directory name is not valid or too long or does contain illegal characters"),
+            FileSystemError::INodeNotADirectory() =>
+                write!(f,"Inode not a directory"),
+            FileSystemError::INodeNotFoundNotUpToDate() =>
+                write!(f,"Inode not up to date with the one in the filesystem")
         }
     }
 }

@@ -94,28 +94,20 @@ impl InodeSupport for FileSystem {
                 self.i_put(&ino);
                 return Ok(i)
             }
-
         }
         return Err(FileSystemError::AllocationError())
     }
 
     fn i_trunc(&mut self, inode: &mut Self::Inode) -> Result<(), Self::Error> {
-
         //TODO DO i need to raise error when these are not equal
         let mut ino = self.i_get(inode.inum)?;
-
         if &ino == inode{
             trunc(self,inode)?;
             self.i_put(&inode);
         }
         else{
         }
-
         Ok(())
-
-
-
-
     }
 }
 
