@@ -92,35 +92,55 @@ impl DirectorySupport for FileSystem {
     }
 
     fn dirlookup(&self, inode: &Self::Inode, name: &str) -> Result<(Self::Inode, u64), Self::Error> {
+        if !is_valid_dirname(name) {
+            return Err(FileSystemError::InvalidDirname())
+        }
+        if inode.get_ft() != FType::TDir {
+            return Err(FileSystemError::INodeNotADirectory());
+        }
         let disk_inode = self.i_get(inode.inum)?;
-        if compare_inodes(&disk_inode, inode) {
-            if inode.get_ft() != FType::TDir{
-                return Err(FileSystemError::INodeNotADirectory())
-            }
-            let mut dire_entries = get_direntries(self, inode)?;
+        if !compare_inodes(&disk_inode, inode) {
+            return  Err(FileSystemError::INodeNotFoundNotUpToDate());
+        }
+        let mut dire_entries = get_direntries(self, inode)?;
 
-            for dir in dire_entries.iter() {
-                let dir_name = FSName::get_name_str(&dir.0);
-                if dir_name.eq(name) {
-                    let inode = self.i_get(dir.0.inum)?;
-                    return Ok((inode, dir.1))
-                }
+        for dir in dire_entries.iter() {
+            let dir_name = FSName::get_name_str(&dir.0);
+            if dir_name.eq(name) {
+                let inode = self.i_get(dir.0.inum)?;
+                return Ok((inode, dir.1))
             }
         }
-        return  Err(FileSystemError::INodeNotFoundNotUpToDate());
-
+        return  Err(FileSystemError::DirectoryNotFound());
     }
 
+
+
+
     fn dirlink(&mut self, inode: &mut Self::Inode, name: &str, inum: u64) -> Result<u64, Self::Error> {
-        if is_valid_dirname(name) && inode.get_ft() == FType::TDir {
-            let fs_inode = self.i_get(inum)?;
-
-            let dir = &FSName::new_de(inum,name).unwrap();
-
-            write_dir(self,inode,dir);
-
+        if !is_valid_dirname(name) {
+            return Err(FileSystemError::InvalidDirname())
         }
-        unimplemented!()
+        if inode.get_ft() != FType::TDir {
+            return Err(FileSystemError::INodeNotADirectory());
+        }
+        let disk_inode = self.i_get(inode.inum)?;
+        if !compare_inodes(&disk_inode, inode) {
+            return  Err(FileSystemError::INodeNotFoundNotUpToDate());
+        }
+
+        let dir = &FSName::new_de(inum, name).unwrap();
+
+
+        if inum != inode.inum{
+            let mut d_inode = self.i_get(inum)?;
+            d_inode.disk_node.nlink += 1;
+        }
+
+        let offset = write_dir(self, inode, dir)?;
+
+        return Ok(offset)
+
     }
 }
 

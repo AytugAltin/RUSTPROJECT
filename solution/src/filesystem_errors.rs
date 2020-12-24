@@ -21,7 +21,8 @@ pub enum FileSystemError{
     InvalidDirname(),
     INodeNotFreeable(),
     INodeNotADirectory(),
-    INodeNotFoundNotUpToDate()
+    INodeNotFoundNotUpToDate(),
+    DirectoryNotFound()
 }
 
 
@@ -47,7 +48,9 @@ impl fmt::Display for FileSystemError{
             FileSystemError::INodeNotADirectory() =>
                 write!(f,"Inode not a directory"),
             FileSystemError::INodeNotFoundNotUpToDate() =>
-                write!(f,"Inode not up to date with the one in the filesystem")
+                write!(f,"Inode not up to date with the one in the filesystem"),
+            FileSystemError::DirectoryNotFound() =>
+                write!(f,"Directory not found in the filesystem")
         }
     }
 }

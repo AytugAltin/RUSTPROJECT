@@ -65,7 +65,7 @@ impl InodeSupport for FileSystem {
 
         block.serialize_into(&ino.disk_node,block_inode_offset)?;
 
-        self.b_put(&block);
+        self.b_put(&block)?;
 
         Ok(())
     }

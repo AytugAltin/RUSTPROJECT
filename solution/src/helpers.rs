@@ -325,18 +325,55 @@ pub fn get_direntries(fs: & FileSystem, inode: & Inode) -> Result<Vec<(DirEntry,
     Ok(list)
 }
 
-pub fn write_dir(fs: & FileSystem, inode: & Inode, dir: &DirEntry){
-    let nlink =inode.get_nlink();
-    let min_size_after_link = (nlink +1) * *DIRENTRY_SIZE ; // This is the size after adding the direntry
+pub fn write_dir(fs: &mut FileSystem, inode: &mut Inode, dir: &DirEntry) -> Result<u64, FileSystemError> {
+    let nlink = inode.get_nlink();
+    let min_size_after_link = (nlink + 1) * *DIRENTRY_SIZE ; // This is the size after adding the direntry
     if min_size_after_link > inode.get_size(){
-        // needs more room
-        //step 1 check if last data block has enough room
+        // The current inode has no room left
+        // step 1 check if last data block has enough room
         let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
-        //if inode.disk_node.direct_blocks.len() *
 
-
+        if nlink % dirs_per_block == 0{
+            // we need a new block
+            let block_nr = fs.b_alloc()?;
+            let mut temp = inode.disk_node.direct_blocks.to_vec();
+            temp.push(block_nr);
+            inode.disk_node.direct_blocks = temp.as_slice().try_into().unwrap();
+        }
+        inode.disk_node.size = min_size_after_link;
     }
+
+    let mut size = get_inode_block_size(fs ,inode);
+
+    let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
+    let mut offset = 0;
+    for j in 0..size as usize{
+        let data_block = inode.disk_node.direct_blocks[j];
+        if data_block >= fs.superblock.datastart && data_block < (fs.superblock.datastart + fs.superblock.ndatablocks) {
+            let index = data_block - fs.superblock.datastart;
+            let mut block = fs.b_get(index)?;
+
+            for index in 0..dirs_per_block{
+                let block_dir_offset = index * *DIRENTRY_SIZE;
+                let disk_dir = block.deserialize_from::<DirEntry>(block_dir_offset);
+                if disk_dir.is_err(){
+                    // we found an empty spot
+                    block.serialize_into(&dir ,block_dir_offset);
+
+                    fs.b_put(&block)?;
+                    offset += block_dir_offset;
+                    return Ok(offset) // this is the inode offset of the new directories location
+                }
+            }
+        }
+        offset+= fs.superblock.block_size;
+    }
+    return Err(FileSystemError::AllocationError());
+
+
 }
+
+
 
 pub fn compare_inodes(inodeA: &Inode, inodeb: &Inode) -> bool{
     if (inodeA.disk_node == inodeb.disk_node) {
