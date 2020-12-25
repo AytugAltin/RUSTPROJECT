@@ -34,6 +34,7 @@ use crate::filesystem_errors::FileSystemError;
 use std::convert::TryInto;
 use std::ops::Index;
 use std::ptr::eq;
+use cplfs_api::types::FType::TFile;
 
 /// You are free to choose the name for your file system. As we will use
 /// automated tests when grading your assignment, indicate here the name of
@@ -98,10 +99,10 @@ impl DirectorySupport for FileSystem {
         if inode.get_ft() != FType::TDir {
             return Err(FileSystemError::INodeNotADirectory());
         }
-        let disk_inode = self.i_get(inode.inum)?;
+        /*let disk_inode = self.i_get(inode.inum)?;
         if !compare_inodes(&disk_inode, inode) {
             return  Err(FileSystemError::INodeNotFoundNotUpToDate());
-        }
+        }*/
         let mut dire_entries = get_direntries(self, inode)?;
 
         for dir in dire_entries.iter() {
@@ -125,21 +126,25 @@ impl DirectorySupport for FileSystem {
             return Err(FileSystemError::INodeNotADirectory());
         }
         let disk_inode = self.i_get(inode.inum)?;
+        /*
         if !compare_inodes(&disk_inode, inode) {
             return  Err(FileSystemError::INodeNotFoundNotUpToDate());
-        }
-
-        let dir = &FSName::new_de(inum, name).unwrap();
+        }*/
 
 
         if inum != inode.inum{
             let mut d_inode = self.i_get(inum)?;
+            if d_inode.get_ft() == FType::TFree {
+                return  Err(FileSystemError::INodeNotADirectory());
+            }
             d_inode.disk_node.nlink += 1;
+            self.i_put(&d_inode);
         }
 
+        let dir = &FSName::new_de(inum, name).unwrap();
         let offset = write_dir(self, inode, dir)?;
 
-        return Ok(offset)
+        return Ok(offset);
 
     }
 }

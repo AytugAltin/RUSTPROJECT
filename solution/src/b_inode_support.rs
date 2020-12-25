@@ -30,7 +30,7 @@ use cplfs_api::types::{FType, Inode, InodeLike, DINODE_SIZE, DInode};
 use crate::filesystem_errors::FileSystemError::IndexOutOfBounds;
 use crate::helpers::{get_inode_block, trunc};
 use crate::filesystem_errors::FileSystemError;
-use std::ptr::eq;
+
 use std::borrow::BorrowMut;
 
 
@@ -40,6 +40,9 @@ use std::borrow::BorrowMut;
 /// having to manually figure out the name.
 /// **TODO**: replace the below type by the type of your file system
 pub type FSName = FileSystem;
+
+
+
 
 impl InodeSupport for FileSystem {
     type Inode = Inode;

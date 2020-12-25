@@ -32,11 +32,11 @@ static SUPERBLOCK_BAD_INODES: SuperBlock = SuperBlock {
 static SUPERBLOCK_BAD_ORDER: SuperBlock = SuperBlock {
     block_size: BLOCK_SIZE,
     nblocks: NBLOCKS,
-    ninodes: 1000,
+    ninodes: 6,
     inodestart: 1,
     ndatablocks: 5,
-    bmapstart: 5,
-    datastart: 6,
+    bmapstart: 6,
+    datastart: 5,
 };
 
 fn disk_prep_path(name: &str) -> PathBuf {

@@ -64,7 +64,6 @@ pub struct FileSystem{
     pub device: Option<Device>,
 }
 
-
 impl FileSystem{
     pub fn create_filesystem( superblock: SuperBlock,device: Option<Device>) -> FileSystem{
         FileSystem{
@@ -72,21 +71,11 @@ impl FileSystem{
             device
         }
     }
-
-
-    // TODO REMOVE
-   /* pub fn get_device(self) ->Result<Device,FileSystemError>{
-        match self.device {
-            Some(dev) => Ok(dev),
-            None => Err(FileSystemError::DeviceNotSet())
-        }
-    }*/
 }
 
 
 impl FileSysSupport for FileSystem{
     type Error = FileSystemError;
-
 
     fn sb_valid(sb: &SuperBlock) -> bool {
         // Step 1: Check Order
@@ -117,7 +106,6 @@ impl FileSysSupport for FileSystem{
             return false
         }
         return true
-
     }
 
     fn mkfs<P: AsRef<Path>>(path: P, sb: &SuperBlock) -> Result<Self, Self::Error> {
@@ -146,7 +134,6 @@ impl FileSysSupport for FileSystem{
     }
 
     fn mountfs(dev: Device) -> Result<Self, Self::Error> {
-
         match dev.read_block(0) {
             Ok(mut block) =>
                 {
@@ -167,15 +154,12 @@ impl FileSysSupport for FileSystem{
             Err(e) => Err(FileSystemError::DeviceAPIError(e))
         }
 
-
-
     }
 
     fn unmountfs(mut self) -> Device {
         let deviceoption = self.device.take();
         let device = deviceoption.unwrap();
         return device;
-
     }
 }
 
@@ -199,14 +183,12 @@ impl BlockSupport for FileSystem {
     fn b_zero(&mut self, i: u64) -> Result<(), Self::Error> {
         let datablock_index = i + self.superblock.datastart;
         let mut block = self.b_get(datablock_index)?;
-        let mut newzeroblock = Block::new_zero(datablock_index,block.len());
+        let mut newzeroblock = Block::new(datablock_index, vec![0; self.superblock.block_size as usize].into_boxed_slice()); //TODO last change
         self.b_put(&newzeroblock)?;
-
         Ok(())
     }
 
     fn b_alloc(&mut self) -> Result<u64, Self::Error> {
-
         let  nbitmapblocks = get_nbitmapblocks(&self.superblock);
         let mut bmstart_index = self.superblock.bmapstart; // get the index
         let mut block ; // get the first block
@@ -243,11 +225,9 @@ impl BlockSupport for FileSystem {
                     self.b_put(&block);
                     return Ok(datablockindex)
                 }
-
             }
         }
         Err(FileSystemError::AllocationError())
-
     }
 
     fn sup_get(&self) -> Result<SuperBlock, Self::Error> {
