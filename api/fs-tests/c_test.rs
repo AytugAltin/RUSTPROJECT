@@ -1,8 +1,8 @@
 use super::FSName;
+use crate::helpers::get_direntries;
 use cplfs_api::fs::{BlockSupport, DirectorySupport, FileSysSupport, InodeSupport};
 use cplfs_api::types::{FType, InodeLike, SuperBlock, DIRENTRY_SIZE};
 use std::path::PathBuf;
-use crate::helpers::get_direntries;
 
 #[path = "utils.rs"]
 mod utils;
@@ -71,7 +71,7 @@ fn dirlookup_link() {
         2 * BLOCK_SIZE,
         &[2, 3],
     )
-        .unwrap();
+    .unwrap();
     assert!(my_fs.dirlink(&mut i1, "test", 10).is_err());
     assert!(my_fs.dirlookup(&i1, "test").is_err());
 
@@ -82,10 +82,8 @@ fn dirlookup_link() {
         (2.5 * (BLOCK_SIZE as f32)) as u64,
         &[6, 7, 8], //All of these blocks are initially 0'ed -> free direntries
     )
-        .unwrap();
+    .unwrap();
     my_fs.i_put(&i2).unwrap();
-
-
 
     //Allocate blocks 5-6-7
     for i in 0..3 {

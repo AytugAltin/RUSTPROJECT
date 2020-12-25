@@ -2,20 +2,17 @@
 
 use thiserror::Error;
 
-
-use std::fmt;
 use cplfs_api::error_given::APIError;
+use std::fmt;
 use std::fmt::Formatter;
 
-#[derive(Error,Debug)]
+#[derive(Error, Debug)]
 /// This structure defines the errors for the filestructure
 /// All the potential errors are grouped here
-pub enum FileSystemError{
+pub enum FileSystemError {
     /// This error is raised whe the given superblock is invalid
     InvalidSuperBlock(),
     //TODO insert possible stuff
-
-
     /// This error is a conversion from an API error and is raised when there occurs when interacting with a Device
     DeviceAPIError(#[from] APIError),
     /// This error is raised whenever a Device is not set and we try to reach for the Devide
@@ -41,11 +38,10 @@ pub enum FileSystemError{
     INodeNotFoundNotUpToDate(),
 
     /// When a directory has not been found when earching with its name.
-    DirectoryNotFound()
+    DirectoryNotFound(),
 }
 
-
-impl fmt::Display for FileSystemError{
+impl fmt::Display for FileSystemError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self{ //TODO add parameters in text
             FileSystemError::InvalidSuperBlock() =>
@@ -73,5 +69,3 @@ impl fmt::Display for FileSystemError{
         }
     }
 }
-
-

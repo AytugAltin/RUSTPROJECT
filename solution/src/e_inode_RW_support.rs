@@ -36,8 +36,6 @@ use cplfs_api::types::Buffer;
 /// **TODO**: replace the below type by the type of your file system
 pub type FSName = FileSystem;
 
-
-
 // **TODO** define your own tests here.
 
 // WARNING: DO NOT TOUCH THE BELOW CODE -- IT IS REQUIRED FOR TESTING -- YOU WILL LOSE POINTS IF I MANUALLY HAVE TO FIX YOUR TESTS

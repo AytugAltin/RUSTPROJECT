@@ -24,18 +24,17 @@
 //!
 
 //use crate::a_block_support::FileSystem;
-use cplfs_api::fs::{InodeSupport, FileSysSupport, BlockSupport};
-use cplfs_api::types::{FType, Inode, InodeLike, DINODE_SIZE, DInode};
+use cplfs_api::fs::{BlockSupport, FileSysSupport, InodeSupport};
+use cplfs_api::types::{DInode, FType, Inode, InodeLike, DINODE_SIZE};
 
-use crate::helpers::{get_inode_block, trunc};
 use crate::filesystem_errors::FileSystemError;
+use crate::helpers::{get_inode_block, trunc};
 
 use std::borrow::BorrowMut;
 
-use cplfs_api::types::{Block,  SuperBlock, };
-use std::path::{Path};
-use cplfs_api::controller::{Device};
-
+use cplfs_api::controller::Device;
+use cplfs_api::types::{Block, SuperBlock};
+use std::path::Path;
 
 use crate::helpers::*;
 
@@ -46,28 +45,23 @@ use crate::helpers::*;
 /// *
 pub type FSName = FileSystem;
 
-
 #[derive(Debug)]
 /// This is the filesystem structure that wa are going to use in the whole project
-pub struct FileSystem{
+pub struct FileSystem {
     /// We keep a reference to the superblock cause it can come in hand
     pub superblock: SuperBlock,
     /// This is the device we work on, it is optional at the start and can be filled in later
     pub device: Option<Device>,
 }
 
-impl FileSystem{
+impl FileSystem {
     /// This function creates a filesystem struct given a superblock and a optional device
-    pub fn create_filesystem( superblock: SuperBlock,device: Option<Device>) -> FileSystem{
-        FileSystem{
-            superblock,
-            device
-        }
+    pub fn create_filesystem(superblock: SuperBlock, device: Option<Device>) -> FileSystem {
+        FileSystem { superblock, device }
     }
 }
 
-
-impl FileSysSupport for FileSystem{
+impl FileSysSupport for FileSystem {
     type Error = FileSystemError;
 
     fn sb_valid(sb: &SuperBlock) -> bool {
@@ -75,14 +69,13 @@ impl FileSysSupport for FileSystem{
     }
 
     fn mkfs<P: AsRef<Path>>(path: P, sb: &SuperBlock) -> Result<Self, Self::Error> {
-        if !FSName::sb_valid(sb){
+        if !FSName::sb_valid(sb) {
             Err(FileSystemError::InvalidSuperBlock())
-        }
-        else  {
-            let  device_result = Device::new(path,sb.block_size,sb.nblocks);
+        } else {
+            let device_result = Device::new(path, sb.block_size, sb.nblocks);
 
             match device_result {
-                Ok(mut device) =>{
+                Ok(mut device) => {
                     //place superblock at index 0
 
                     write_sb(sb, &mut device)?;
@@ -93,33 +86,28 @@ impl FileSysSupport for FileSystem{
 
                     allocate_inodes(&mut fs)?;
                     Ok(fs)
-                },
-                Err(e) => Err(FileSystemError::DeviceAPIError(e))
+                }
+                Err(e) => Err(FileSystemError::DeviceAPIError(e)),
             }
         }
     }
 
     fn mountfs(dev: Device) -> Result<Self, Self::Error> {
         match dev.read_block(0) {
-            Ok( block) =>
+            Ok(block) => {
+                let sb = &block.deserialize_from::<SuperBlock>(0)?;
+                if FSName::sb_valid(sb)
+                    && dev.block_size == sb.block_size
+                    && dev.nblocks == sb.nblocks
                 {
-                    let  sb = &block.deserialize_from::<SuperBlock>(0)?;
-                    if FSName::sb_valid(sb)
-                        && dev.block_size == sb.block_size
-                        && dev.nblocks == sb.nblocks
-                    {
-                        let fs = FileSystem::create_filesystem(*sb, Some(dev));
-                        Ok(fs)
-                    }
-                    else{
-
-                        Err(FileSystemError::InvalidSuperBlock())
-                    }
+                    let fs = FileSystem::create_filesystem(*sb, Some(dev));
+                    Ok(fs)
+                } else {
+                    Err(FileSystemError::InvalidSuperBlock())
                 }
-            ,
-            Err(e) => Err(FileSystemError::DeviceAPIError(e))
+            }
+            Err(e) => Err(FileSystemError::DeviceAPIError(e)),
         }
-
     }
 
     fn unmountfs(mut self) -> Device {
@@ -130,66 +118,76 @@ impl FileSysSupport for FileSystem{
 }
 
 impl BlockSupport for FileSystem {
-
     fn b_get(&self, i: u64) -> Result<Block, Self::Error> {
-        let dev = self.device.as_ref().ok_or_else(||FileSystemError::DeviceNotSet())?;
-        return Ok(read_block(dev,i)?);
+        let dev = self
+            .device
+            .as_ref()
+            .ok_or_else(|| FileSystemError::DeviceNotSet())?;
+        return Ok(read_block(dev, i)?);
     }
 
     fn b_put(&mut self, b: &Block) -> Result<(), Self::Error> {
-        let  dev = self.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
-        return Ok(write_block(dev,b)?);
+        let dev = self
+            .device
+            .as_mut()
+            .ok_or_else(|| FileSystemError::DeviceNotSet())?;
+        return Ok(write_block(dev, b)?);
     }
 
     fn b_free(&mut self, i: u64) -> Result<(), Self::Error> {
-        let  dev = self.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
+        let dev = self
+            .device
+            .as_mut()
+            .ok_or_else(|| FileSystemError::DeviceNotSet())?;
         set_bitmapbit(&self.superblock, dev, i, false)?;
         Ok(())
     }
 
     fn b_zero(&mut self, i: u64) -> Result<(), Self::Error> {
         let datablock_index = i + self.superblock.datastart;
-        let  newzeroblock = Block::new(datablock_index, vec![0; self.superblock.block_size as usize].into_boxed_slice()); //TODO last change
+        let newzeroblock = Block::new(
+            datablock_index,
+            vec![0; self.superblock.block_size as usize].into_boxed_slice(),
+        ); //TODO last change
         self.b_put(&newzeroblock)?;
         Ok(())
     }
 
     fn b_alloc(&mut self) -> Result<u64, Self::Error> {
-        let  nbitmapblocks = get_nbitmapblocks(&self.superblock);
+        let nbitmapblocks = get_nbitmapblocks(&self.superblock);
         let mut bmstart_index = self.superblock.bmapstart; // get the index
-        let mut block ; // get the first block
-        let mut byte_array;// create an empty data buffer
-        let mut byteindex;//block index
+        let mut block; // get the first block
+        let mut byte_array; // create an empty data buffer
+        let mut byteindex; //block index
 
-        for blockindex in 0..nbitmapblocks{
-            block = self.b_get(bmstart_index +blockindex)?; //next block
-            //byte_array = block.contents_as_ref(); //get the block's array
+        for blockindex in 0..nbitmapblocks {
+            block = self.b_get(bmstart_index + blockindex)?; //next block
+                                                             //byte_array = block.contents_as_ref(); //get the block's array
             byte_array = block.contents_as_ref();
             byteindex = get_bytesarray_free_index(byte_array);
             if byteindex.is_err() {
                 // HERE WE ARE LOOKING FOR THE NEXT BLOCK
                 bmstart_index += 1; //next block index
-            }
-            else {
+            } else {
                 // The current bm_block has a free spot
                 let byteindex = byteindex.unwrap(); //get the index of the byte that has a free spot
                 let byte = byte_array.get(usize::from(byteindex)).unwrap();
                 let bitindex = 8 - 1 - byte.trailing_ones(); //moves the 1 to the correct position
-                let  mutator = 0b00000001u8 << byte.trailing_ones(); //moves the 1 to the correct position
+                let mutator = 0b00000001u8 << byte.trailing_ones(); //moves the 1 to the correct position
 
                 let to_write_byte = &[(*byte | mutator)];
 
-
                 block.write_data(to_write_byte, byteindex as u64)?;
 
-
                 let byteindex: u64 = u64::from(byteindex);
-                let datablockindex = blockindex * self.superblock.block_size * 8 + (byteindex) * 8 + u64::from(7 - bitindex);
+                let datablockindex = blockindex * self.superblock.block_size * 8
+                    + (byteindex) * 8
+                    + u64::from(7 - bitindex);
 
                 if datablockindex < self.superblock.ndatablocks {
                     self.b_zero(datablockindex)?;
                     self.b_put(&block)?;
-                    return Ok(datablockindex)
+                    return Ok(datablockindex);
                 }
             }
         }
@@ -214,9 +212,8 @@ impl InodeSupport for FileSystem {
     type Inode = Inode;
 
     fn i_get(&self, i: u64) -> Result<Self::Inode, Self::Error> {
-
         let inodes_per_block = self.superblock.block_size / *DINODE_SIZE;
-        let  block = get_inode_block(self, i,inodes_per_block)?;
+        let block = get_inode_block(self, i, inodes_per_block)?;
         let block_inode_offset = i % inodes_per_block * *DINODE_SIZE;
 
         let disk_node = block.deserialize_from::<DInode>(block_inode_offset)?;
@@ -224,15 +221,13 @@ impl InodeSupport for FileSystem {
         return Ok(Inode::new(i, disk_node));
     }
 
-
     fn i_put(&mut self, ino: &Self::Inode) -> Result<(), Self::Error> {
-
         let inodes_per_block = self.superblock.block_size / *DINODE_SIZE;
-        let mut block = get_inode_block(self, ino.inum,inodes_per_block)?;
+        let mut block = get_inode_block(self, ino.inum, inodes_per_block)?;
 
         let block_inode_offset = ino.inum % inodes_per_block * *DINODE_SIZE;
 
-        block.serialize_into(&ino.disk_node,block_inode_offset)?;
+        block.serialize_into(&ino.disk_node, block_inode_offset)?;
 
         self.b_put(&block)?;
 
@@ -242,55 +237,42 @@ impl InodeSupport for FileSystem {
     fn i_free(&mut self, i: u64) -> Result<(), Self::Error> {
         let mut ino = self.i_get(i)?;
 
-        if ino.disk_node.nlink == 0 && ino.inum > 0{
+        if ino.disk_node.nlink == 0 && ino.inum > 0 {
             trunc(self, ino.borrow_mut())?;
             ino.disk_node.ft = FType::TFree;
             self.i_put(&ino)?;
             Ok(())
-        }
-        else
-        {
+        } else {
             Err(FileSystemError::INodeNotFreeable())
         }
     }
 
     fn i_alloc(&mut self, ft: FType) -> Result<u64, Self::Error> {
         let inode_alloc_start = 1;
-        for i in inode_alloc_start..self.superblock.ninodes{
+        for i in inode_alloc_start..self.superblock.ninodes {
             let mut ino = self.i_get(i)?;
-            if ino.get_ft() == FType::TFree{
+            if ino.get_ft() == FType::TFree {
                 ino.disk_node.ft = ft;
                 self.i_put(&ino)?;
-                return Ok(i)
+                return Ok(i);
             }
-
         }
-        return Err(FileSystemError::AllocationError())
+        return Err(FileSystemError::AllocationError());
     }
 
     fn i_trunc(&mut self, inode: &mut Self::Inode) -> Result<(), Self::Error> {
-
         //TODO DO i need to raise error when these are not equal
-        let  ino = self.i_get(inode.inum)?;
+        let ino = self.i_get(inode.inum)?;
 
-        if &ino == inode{
-            trunc(self,inode)?;
+        if &ino == inode {
+            trunc(self, inode)?;
             self.i_put(&inode)?;
-        }
-        else{
+        } else {
         }
 
         Ok(())
-
-
-
-
     }
 }
-
-
-
-
 
 // **TODO** define your own tests here.
 

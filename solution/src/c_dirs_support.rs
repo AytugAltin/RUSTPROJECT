@@ -26,15 +26,18 @@
 //!
 
 use crate::b_inode_support::FileSystem;
-use cplfs_api::fs::{DirectorySupport, InodeSupport, FileSysSupport, BlockSupport};
-use cplfs_api::types::{DirEntry, DIRNAME_SIZE, InodeLike, FType, Inode, Block, SuperBlock};
-use crate::helpers::{to_char_array, is_valid_dirname,  get_direntries,  write_dir,  sb_valid, write_sb, allocate_inoderegionblocks, allocate_bitmapregion, allocate_dataregion, allocate_inodes, allocate_rootdirectory};
+use crate::helpers::{
+    allocate_bitmapregion, allocate_dataregion, allocate_inoderegionblocks, allocate_inodes,
+    allocate_rootdirectory, get_direntries, is_valid_dirname, sb_valid, to_char_array, write_dir,
+    write_sb,
+};
+use cplfs_api::fs::{BlockSupport, DirectorySupport, FileSysSupport, InodeSupport};
+use cplfs_api::types::{Block, DirEntry, FType, Inode, InodeLike, SuperBlock, DIRNAME_SIZE};
 
 use crate::filesystem_errors::FileSystemError;
 
-
-use std::path::Path;
 use cplfs_api::controller::Device;
+use std::path::Path;
 
 /// You are free to choose the name for your file system. As we will use
 /// automated tests when grading your assignment, indicate here the name of
@@ -53,17 +56,12 @@ pub struct FileSystemC {
     pub fs: FileSystem,
 }
 
-
 impl FileSystemC {
     /// This function creates a filesystem_c given an old filesystem
-    pub fn create_filesystem( fs: FileSystem) -> FileSystemC {
-        FileSystemC {
-            fs
-        }
+    pub fn create_filesystem(fs: FileSystem) -> FileSystemC {
+        FileSystemC { fs }
     }
 }
-
-
 
 impl FileSysSupport for FileSystemC {
     type Error = FileSystemError;
@@ -73,14 +71,13 @@ impl FileSysSupport for FileSystemC {
     }
 
     fn mkfs<P: AsRef<Path>>(path: P, sb: &SuperBlock) -> Result<Self, Self::Error> {
-        if !FSName::sb_valid(sb){
+        if !FSName::sb_valid(sb) {
             Err(FileSystemError::InvalidSuperBlock())
-        }
-        else  {
-            let  device_result = Device::new(path,sb.block_size,sb.nblocks);
+        } else {
+            let device_result = Device::new(path, sb.block_size, sb.nblocks);
 
             match device_result {
-                Ok(mut device) =>{
+                Ok(mut device) => {
                     //place superblock at index 0
 
                     write_sb(sb, &mut device)?;
@@ -92,30 +89,28 @@ impl FileSysSupport for FileSystemC {
                     allocate_inodes(&mut fs_c.fs)?;
                     allocate_rootdirectory(&mut fs_c.fs)?;
                     Ok(fs_c)
-                },
-                Err(e) => Err(FileSystemError::DeviceAPIError(e))
+                }
+                Err(e) => Err(FileSystemError::DeviceAPIError(e)),
             }
         }
     }
 
     fn mountfs(dev: Device) -> Result<Self, Self::Error> {
         match dev.read_block(0) {
-            Ok( block) =>
+            Ok(block) => {
+                let sb = &block.deserialize_from::<SuperBlock>(0)?;
+                if FSName::sb_valid(sb)
+                    && dev.block_size == sb.block_size
+                    && dev.nblocks == sb.nblocks
                 {
-                    let  sb = &block.deserialize_from::<SuperBlock>(0)?;
-                    if FSName::sb_valid(sb)
-                        && dev.block_size == sb.block_size
-                        && dev.nblocks == sb.nblocks
-                    {
-                        let fs = FileSystem::create_filesystem(*sb, Some(dev));
-                        let fs_c = FileSystemC::create_filesystem(fs);
-                        Ok(fs_c)
-                    } else {
-                        Err(FileSystemError::InvalidSuperBlock())
-                    }
+                    let fs = FileSystem::create_filesystem(*sb, Some(dev));
+                    let fs_c = FileSystemC::create_filesystem(fs);
+                    Ok(fs_c)
+                } else {
+                    Err(FileSystemError::InvalidSuperBlock())
                 }
-            ,
-            Err(e) => Err(FileSystemError::DeviceAPIError(e))
+            }
+            Err(e) => Err(FileSystemError::DeviceAPIError(e)),
         }
     }
 
@@ -123,7 +118,6 @@ impl FileSysSupport for FileSystemC {
         return self.fs.unmountfs();
     }
 }
-
 
 impl BlockSupport for FileSystemC {
     fn b_get(&self, i: u64) -> Result<Block, Self::Error> {
@@ -155,7 +149,6 @@ impl BlockSupport for FileSystemC {
     }
 }
 
-
 impl InodeSupport for FileSystemC {
     type Inode = Inode;
 
@@ -185,18 +178,16 @@ impl InodeSupport for FileSystemC {
 //region NEW_STRUCTURE
 
 impl DirectorySupport for FileSystemC {
-
     fn new_de(inum: u64, name: &str) -> Option<DirEntry> {
-        let mut direntry =  DirEntry::default();
+        let mut direntry = DirEntry::default();
 
-        if FSName::set_name_str(&mut direntry, name).is_none(){
-            return None
-        }
-        else{
+        if FSName::set_name_str(&mut direntry, name).is_none() {
+            return None;
+        } else {
             direntry.inum = inum;
         }
 
-        return Some(direntry)
+        return Some(direntry);
     }
 
     fn get_name_str(de: &DirEntry) -> String {
@@ -204,11 +195,11 @@ impl DirectorySupport for FileSystemC {
 
         let index = vec.iter().position(|&r| r == '\0').unwrap();
 
-        vec.resize(index,'\0');
+        vec.resize(index, '\0');
 
-        let name:String =  vec.iter().collect::<String>();
+        let name: String = vec.iter().collect::<String>();
 
-        println!("{}",name);
+        println!("{}", name);
         return name;
     }
 
@@ -216,56 +207,59 @@ impl DirectorySupport for FileSystemC {
         if name.len() > 0 && name.len() <= DIRNAME_SIZE {
             if is_valid_dirname(name) {
                 match to_char_array(name) {
-                    Ok(name) =>
-
-                        de.name = name
-                    ,
-                    Err(e) => return None
+                    Ok(name) => de.name = name,
+                    Err(e) => return None,
                 }
                 Some(())
-            }
-            else{
+            } else {
                 None
             }
-        }
-        else{
+        } else {
             None
         }
     }
 
-    fn dirlookup(&self, inode: &Self::Inode, name: &str) -> Result<(Self::Inode, u64), Self::Error> {
+    fn dirlookup(
+        &self,
+        inode: &Self::Inode,
+        name: &str,
+    ) -> Result<(Self::Inode, u64), Self::Error> {
         if !is_valid_dirname(name) {
-            return Err(FileSystemError::InvalidDirname())
+            return Err(FileSystemError::InvalidDirname());
         }
         if inode.get_ft() != FType::TDir {
             return Err(FileSystemError::INodeNotADirectory());
         }
 
-        let  dire_entries = get_direntries(&self.fs, inode)?;
+        let dire_entries = get_direntries(&self.fs, inode)?;
 
         for dir in dire_entries.iter() {
             let dir_name = FSName::get_name_str(&dir.0);
             if dir_name.eq(name) {
                 let inode = self.i_get(dir.0.inum)?;
-                return Ok((inode, dir.1))
+                return Ok((inode, dir.1));
             }
         }
-        return  Err(FileSystemError::DirectoryNotFound());
+        return Err(FileSystemError::DirectoryNotFound());
     }
 
-
-    fn dirlink(&mut self, inode: &mut Self::Inode, name: &str, inum: u64) -> Result<u64, Self::Error> {
+    fn dirlink(
+        &mut self,
+        inode: &mut Self::Inode,
+        name: &str,
+        inum: u64,
+    ) -> Result<u64, Self::Error> {
         if !is_valid_dirname(name) {
-            return Err(FileSystemError::InvalidDirname())
+            return Err(FileSystemError::InvalidDirname());
         }
         if inode.get_ft() != FType::TDir {
             return Err(FileSystemError::INodeNotADirectory());
         }
 
-        if inum != inode.inum{
+        if inum != inode.inum {
             let mut d_inode = self.i_get(inum)?;
             if d_inode.get_ft() == FType::TFree {
-                return  Err(FileSystemError::INodeNotADirectory());
+                return Err(FileSystemError::INodeNotADirectory());
             }
             d_inode.disk_node.nlink += 1;
             self.i_put(&d_inode)?;
@@ -276,16 +270,14 @@ impl DirectorySupport for FileSystemC {
     }
 }
 
-
 //endregion
-
 
 #[cfg(test)]
 #[path = "../../api/fs-tests"]
 mod test_with_utils {
     use super::FSName;
-    use cplfs_api::fs::{ DirectorySupport, FileSysSupport};
-    use cplfs_api::types::{  SuperBlock};
+    use cplfs_api::fs::{DirectorySupport, FileSysSupport};
+    use cplfs_api::types::SuperBlock;
     use std::path::PathBuf;
 
     #[path = "utils.rs"]
@@ -305,7 +297,6 @@ mod test_with_utils {
 
     #[test]
     fn unit_test() {
-
         let path = disk_prep_path("mkfs");
         let myfs = FSName::mkfs(&path, &SUPERBLOCK_GOOD).unwrap();
 
@@ -313,7 +304,7 @@ mod test_with_utils {
         assert!(FSName::new_de(0, name1).is_none());
 
         let name2 = "tes.t."; //should stop reading at the end string char
-        let  de = FSName::new_de(0, name2).unwrap();
+        let de = FSName::new_de(0, name2).unwrap();
         assert_eq!("tes.t.", FSName::get_name_str(&de));
     }
 
