@@ -1,31 +1,29 @@
-#![allow(dead_code)]
+//! This file contains helper functions that are used to complete the assignment
 
-//Some more general testing utilities
 use cplfs_api::controller::Device;
-use cplfs_api::types::{Block, SuperBlock, Buffer, DInode, DINODE_SIZE, Inode, FType, InodeLike,DIRENTRY_SIZE, DIRNAME_SIZE, DirEntry};
-use std::fs::{create_dir_all, remove_dir, remove_file, read};
-use std::path::{Path, PathBuf};
-use crate::a_block_support::FileSystem;
+use cplfs_api::types::{Block, SuperBlock,  DINODE_SIZE, Inode, FType, InodeLike,DIRENTRY_SIZE, DIRNAME_SIZE, DirEntry};
+
+
+use crate::b_inode_support::FileSystem;
 use cplfs_api::fs::{BlockSupport, InodeSupport};
 
-use thiserror::Error;
 use anyhow::Error;
 use crate::filesystem_errors::FileSystemError;
-use cplfs_api::types::FType::TFree;
 use crate::b_inode_support::FSName;
-use std::borrow::Borrow;
 use std::convert::TryInto;
 
 // region PART_A
-
-pub fn write_sb(sb: &SuperBlock, dev: &mut Device) -> Result<(), Error> {
+/// Writes a Superblock into the given device, error when something goes wrong
+pub fn write_sb(sb: &SuperBlock, dev: &mut Device) -> Result<(), FileSystemError> {
     let mut firstblock = dev.read_block(0)?;
     firstblock.serialize_into(&sb, 0)?;
     dev.write_block(&firstblock)?;
     Ok(())
 }
 
-pub fn allocate_bitmapregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), Error>{
+
+/// Alocates bitmapregion given a sevice and a superblock
+pub fn allocate_bitmapregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), FileSystemError>{
     let nbitmapblocks = get_nbitmapblocks(sb);
     let start = sb.bmapstart;
     let end = sb.bmapstart + nbitmapblocks;
@@ -36,6 +34,8 @@ pub fn allocate_bitmapregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), Er
     Ok(())
 }
 
+
+/// Calculates the number of bitmapblocks given a superblock
 pub fn get_nbitmapblocks(sb: &SuperBlock)-> u64{
     let mut nbitmapblocks = sb.ndatablocks / sb.block_size  ;
 
@@ -46,6 +46,7 @@ pub fn get_nbitmapblocks(sb: &SuperBlock)-> u64{
     return nbitmapblocks;
 }
 
+/// Calculates the number of inode blocks given a superblock
 pub fn get_ninodeblocks(sb: &SuperBlock)-> u64{
     let inodes_per_block =  sb.block_size / *DINODE_SIZE;
     let mut ninodeblocks = sb.ninodes / inodes_per_block;
@@ -57,7 +58,8 @@ pub fn get_ninodeblocks(sb: &SuperBlock)-> u64{
     return ninodeblocks;
 }
 
-pub fn allocate_inoderegionblocks(sb: &SuperBlock, dev: &mut Device) -> Result<(), Error>{
+/// allocates the blocks for the Inode region given a superblock and a device
+pub fn allocate_inoderegionblocks(sb: &SuperBlock, dev: &mut Device) -> Result<(), FileSystemError>{
     let ninodeblocks = sb.ninodes;
     let start = sb.inodestart;
     let end = sb.inodestart + ninodeblocks;
@@ -68,7 +70,8 @@ pub fn allocate_inoderegionblocks(sb: &SuperBlock, dev: &mut Device) -> Result<(
     Ok(())
 }
 
-pub fn allocate_dataregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), Error>{
+/// Allocates the blocks for the Data region given a superblock and a device
+pub fn allocate_dataregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), FileSystemError>{
     let start = sb.datastart;
     let end = sb.datastart + sb.ndatablocks;
     for i in start..end{
@@ -78,9 +81,8 @@ pub fn allocate_dataregion(sb: &SuperBlock, dev: &mut Device) -> Result<(), Erro
     Ok(())
 }
 
-
+/// Calculates a ceratin position by bits,bytes and blocks index in the dataregion given a superblock and a index
 pub fn get_bit_byte_blockindex(sb: &SuperBlock, index: u64) -> Result<(u8,u16, u64), FileSystemError> {
-
     let mut blockindex = 0;
     let mut bitindex = index;
     while sb.block_size <= bitindex {
@@ -105,16 +107,19 @@ pub fn get_bit_byte_blockindex(sb: &SuperBlock, index: u64) -> Result<(u8,u16, u
     return Ok((bitindexsmall,byteindex,bmblock_index));
 }
 
-pub fn set_bitmapbit(fs: & mut FileSystem,  mut data_index: u64, n:bool)-> Result<(), FileSystemError>{
 
-    check_data_index_outofbounds(&fs.superblock, data_index);
+/// Sets the bitmap bit of a given filesystem that belongs to the datablock (data_index) to
+/// 1 if n = true, 0 if n is false
+pub fn set_bitmapbit(sb: &SuperBlock, dev: &mut Device,   data_index: u64, n:bool)-> Result<(), FileSystemError>{
 
-    let mut dev = fs.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
+    check_data_index_outofbounds(sb, data_index)?;
 
-    let temp =  get_bit_byte_blockindex(&fs.superblock, data_index)?;
-    let mut bitindex = temp.0;
-    let mut byteindex = temp.1;
-    let mut bmblock_index = temp.2;
+    //let mut dev = fs.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
+
+    let temp =  get_bit_byte_blockindex(sb, data_index)?;
+    let  bitindex = temp.0;
+    let  byteindex = temp.1;
+    let  bmblock_index = temp.2;
 
     let mut bmblock = read_block(dev, bmblock_index)?;
 
@@ -125,13 +130,15 @@ pub fn set_bitmapbit(fs: & mut FileSystem,  mut data_index: u64, n:bool)-> Resul
 
 }
 
-fn check_data_index_outofbounds(sb: &SuperBlock, mut data_index: u64)-> Result<(), FileSystemError>{
+/// Quick check if a certain index of a data block is not out of bounds
+fn check_data_index_outofbounds(sb: &SuperBlock,  data_index: u64)-> Result<(), FileSystemError>{
     if data_index >= sb.ndatablocks {
         return Err(FileSystemError::IndexOutOfBounds())
     }
     Ok(())
 }
 
+/// Sets a certain bit of a block to 1 if n = true, 0 if n is false
 fn set_bit_of_block(b: &mut Block,byteindex:u16,bitindex:u8,n:bool)-> Result<&mut Block, FileSystemError>{
     let byte_array = b.contents_as_ref();
     let byte = byte_array.get(usize::from(byteindex)).unwrap();
@@ -158,13 +165,15 @@ fn set_bit_of_block(b: &mut Block,byteindex:u16,bitindex:u8,n:bool)-> Result<&mu
     return Ok(b);
 }
 
+///  Helper functions that reads the block at ith position of a given device
 pub fn read_block(dev: &Device, i: u64) -> Result<Block, FileSystemError> {
     match dev.read_block(i) {
-        Ok(mut block) => Ok(block),
+        Ok( block) => Ok(block),
         Err(e) => Err(FileSystemError::DeviceAPIError(e))
     }
 }
 
+///  Helper functions that writes a block to the ith position of a given device
 pub fn write_block(dev: &mut Device, b: &Block) -> Result<(), FileSystemError> {
     match dev.write_block(&b) {
         Ok(..) => Ok(()),
@@ -172,7 +181,8 @@ pub fn write_block(dev: &mut Device, b: &Block) -> Result<(), FileSystemError> {
     }
 }
 
-
+/// Finds the index of the bitmap that is not set to 0
+/// This index is where a new datablock is not in use and can be allocated
 pub fn get_bytesarray_free_index(byte_array: &[u8])-> Result<u16, FileSystemError>{
     let mut byte_index = 0;
 
@@ -184,14 +194,49 @@ pub fn get_bytesarray_free_index(byte_array: &[u8])-> Result<u16, FileSystemErro
     }
     Err(FileSystemError::AllocationError())
 }
+/// Checks whether the superblock is valid or not and returns the result of the check
+pub fn sb_valid(sb: &SuperBlock) -> bool {
+    // Step 1: Check Order
+    if !sb.inodestart == 1 { // Inode needs to start at index 1
+        return false
+    }
+    let  ninodeblocks = get_ninodeblocks(sb);
+
+    let  nbitmapblocks = get_nbitmapblocks(sb);
+
+    if ! (sb.inodestart  + ninodeblocks <= sb.bmapstart) {
+        // check overlap between inodes region and bitmap region
+        return false
+    }
+
+    if ! (sb.bmapstart  + nbitmapblocks <= sb.datastart) {
+        // check overlap between bitmap and data region
+        return false
+    }
+
+    if ! (sb.datastart  + sb.ndatablocks < sb.block_size) {
+        // check overlap between bitmap and data region
+        return false
+    }
+
+    // Step 2: Check size
+    if sb.nblocks < ninodeblocks + sb.ndatablocks + nbitmapblocks{
+        return false
+    }
+    return true
+}
+
+
+
+
 
 //endregion
 
 
 // region PART_B
 
+/// Here we allocate the inodes of a given filesystem
 pub fn allocate_inodes(fs: & mut FileSystem) -> Result<(), FileSystemError> {
-
 
     for i in 0..fs.superblock.ninodes {
         let i1 = <<FSName as InodeSupport>::Inode as InodeLike>::new(
@@ -205,14 +250,13 @@ pub fn allocate_inodes(fs: & mut FileSystem) -> Result<(), FileSystemError> {
         fs.i_put(&i1)?;
     }
 
-    allocate_rootdirectory(fs);
     Ok(())
 }
 
-
+/// Securely gets the inode of the ith index
 pub fn get_inode_block(fs: & FileSystem,i: u64,inodes_per_block:u64) -> Result<Block, FileSystemError>
 {
-    let mut block;
+    let  block;
     if i < fs.superblock.ninodes {
         let block_index = i / inodes_per_block;
         block = fs.b_get(fs.superblock.inodestart + block_index)?;
@@ -224,10 +268,10 @@ pub fn get_inode_block(fs: & FileSystem,i: u64,inodes_per_block:u64) -> Result<B
 }
 
 
-
+/// Truncate the given inode of a Filesystem
 pub fn trunc(fs: &mut FileSystem, ino: &mut Inode ) -> Result<(), FileSystemError> {
 
-    let mut size = get_inode_block_size(fs,ino);
+    let  size = get_inode_block_size(fs,ino);
 
     for j in 0..size as usize {
         let data_block = ino.disk_node.direct_blocks[j];
@@ -243,14 +287,13 @@ pub fn trunc(fs: &mut FileSystem, ino: &mut Inode ) -> Result<(), FileSystemErro
     Ok(())
 }
 
+/// Calculates the number of inodes per block
 pub fn get_inode_block_size(fs:  &FileSystem, ino:  &Inode ) -> u64 {
     let mut size = ino.get_size() / fs.superblock.block_size;
     if ino.get_size() % fs.superblock.block_size != 0 {
         size = size + 1;
     }
     return size;
-
-
 }
 
 
@@ -262,6 +305,7 @@ pub fn get_inode_block_size(fs:  &FileSystem, ino:  &Inode ) -> u64 {
 
 //region PART_C
 
+/// Converts a string to a char array that is used in a direntry
 pub fn to_char_array(s: &str) -> Result< [char;DIRNAME_SIZE], Error> {
     let mut char_vec: Vec<char> = s.chars().collect();
 
@@ -279,7 +323,7 @@ pub fn to_char_array(s: &str) -> Result< [char;DIRNAME_SIZE], Error> {
     }
 }
 
-
+/// Allocates the rootdirectory iniode in a given filesystem
 pub fn allocate_rootdirectory(fs: & mut FileSystem) -> Result<(), FileSystemError> {
     let i1 = <<FSName as InodeSupport>::Inode as InodeLike>::new(
         1,
@@ -293,20 +337,18 @@ pub fn allocate_rootdirectory(fs: & mut FileSystem) -> Result<(), FileSystemErro
     Ok(())
 }
 
-
+/// checks whether a string is a valid directoryname
 pub fn is_valid_dirname(name: &str)-> bool{
     return  name.replace(".", "0").chars().all(char::is_alphanumeric)
 }
 
-/**
-Get directory enties
-**/
+/// Get all directory entries, even if they are 0
 pub fn get_direntries(fs: & FileSystem, inode: & Inode) -> Result<Vec<(DirEntry, u64)>, FileSystemError> {
 
     let mut list : Vec<(DirEntry, u64)> = vec![];
 
     let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
-    let mut size = get_inode_block_size(fs ,inode);
+    let  size = get_inode_block_size(fs ,inode);
 
     // loop over entries
     for j in 0..size as usize{
@@ -324,7 +366,7 @@ pub fn get_direntries(fs: & FileSystem, inode: & Inode) -> Result<Vec<(DirEntry,
     Ok(list)
 }
 
-
+/// writes a directory into a inode and allocates if there i not enough room
 pub fn write_dir(fs: &mut FileSystem, inode: &mut Inode, dir: &DirEntry) -> Result<u64, FileSystemError> {
     let size = inode.get_size();
     let size_after = size + *DIRENTRY_SIZE ; // This is the size after adding the direntry
@@ -345,11 +387,11 @@ pub fn write_dir(fs: &mut FileSystem, inode: &mut Inode, dir: &DirEntry) -> Resu
         // we need a new block
         let block_nr = fs.b_alloc()? + fs.superblock.datastart;
         add_block_to_inode(inode,block_nr)?;
-        fs.i_put(&inode); // update new inode in fs
+        fs.i_put(&inode)?; // update new inode in fs
     }
     inode.disk_node.size = size_after;
 
-    let mut size = get_inode_block_size(fs ,inode);
+    let  size = get_inode_block_size(fs ,inode);
 
     let dirs_per_block = fs.superblock.block_size / *DIRENTRY_SIZE;
     let mut offset = 0;
@@ -363,7 +405,7 @@ pub fn write_dir(fs: &mut FileSystem, inode: &mut Inode, dir: &DirEntry) -> Resu
                 let disk_dir = block.deserialize_from::<DirEntry>(block_dir_offset)?;
                 if disk_dir.inum == 0  {
                     // we found an empty spot
-                    block.serialize_into(&dir ,block_dir_offset);
+                    block.serialize_into(&dir ,block_dir_offset)?;
 
                     fs.b_put(&block)?;
                     offset += block_dir_offset;
@@ -376,6 +418,8 @@ pub fn write_dir(fs: &mut FileSystem, inode: &mut Inode, dir: &DirEntry) -> Resu
     return Err(FileSystemError::AllocationError());
 }
 
+
+/// adds a block to the inode
 pub fn add_block_to_inode(inode: &mut Inode,block_nr:u64)-> Result<(), FileSystemError> {
     for i in 0..inode.disk_node.direct_blocks.len(){
         if inode.disk_node.direct_blocks[i] == 0 {
@@ -385,15 +429,6 @@ pub fn add_block_to_inode(inode: &mut Inode,block_nr:u64)-> Result<(), FileSyste
     }
     return Err(FileSystemError::AllocationError());
 }
-
-
-pub fn compare_inodes(inodeA: &Inode, inodeb: &Inode) -> bool{
-    if (inodeA.disk_node == inodeb.disk_node) {
-        return true
-    }
-    return false
-}
-
 
 
 

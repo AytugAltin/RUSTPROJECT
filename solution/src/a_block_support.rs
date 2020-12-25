@@ -15,56 +15,51 @@
 //! or you want to explain your approach, write it down after the comments
 //! section. If you had no major issues and everything works, there is no need to write any comments.
 //!
-//! COMPLETED: ?
+//! COMPLETED: YES
 //!
-//! COMMENTS:
+//! COMMENTS: I realized to late that i could have used the sup_get function when wanting to use the superblock,
+//! Instead i kept the parameter superblock in the structure
 //!
 //! ...
 //!
 
 // Turn off the warnings we get from the below example imports, which are currently unused.
-// TODO: this should be removed once you are done implementing this file. You can remove all of the
-// TODO: below imports you do not need, as they are simply there to illustrate how you can import things.
-#![allow(unused_imports)]
 
 
 
 // If you want to import things from the API crate, do so as follows:
 use cplfs_api::fs::{FileSysSupport, BlockSupport};
-use cplfs_api::types::{Block, Inode, SuperBlock, DInode,DINODE_SIZE};
-use std::path::{Path, PathBuf};
-use cplfs_api::controller::{Device, DiskState};
-use std::fmt::{Formatter, Error};
-use std::fs::File;
+use cplfs_api::types::{Block,  SuperBlock};
+use std::path::{Path};
+use cplfs_api::controller::{Device};
 
-use cplfs_api::error_given::APIError;
-use cplfs_api::error_given;
-use thiserror::Error;
+
 
 use crate::filesystem_errors::FileSystemError;
-use std::io::BufRead;
+
 use crate::helpers::*;
-use std::borrow::Borrow;
 
-
-#[path = "helpers.rs"]
 
 
 /// You are free to choose the name for your file system. As we will use
 /// automated tests when grading your assignment, indicate here the name of
 /// your file system data type so we can just use `FSName` instead of
 /// having to manually figure out your file system name.
-/// **TODO**: replace the below type by the type of your file system
 pub type FSName = FileSystem;
 
 
+
 #[derive(Debug)]
+/// This is the filesystem structure that wa are going to use in the whole project
 pub struct FileSystem{
+    /// We keep a reference to the superblock cause it can come in hand
     pub superblock: SuperBlock,
+    /// This is the device we work on, it is optional at the start and can be filled in later
     pub device: Option<Device>,
 }
 
 impl FileSystem{
+    /// This function creates a filesystem struct given a superblock and a optional device
     pub fn create_filesystem( superblock: SuperBlock,device: Option<Device>) -> FileSystem{
         FileSystem{
             superblock,
@@ -78,39 +73,12 @@ impl FileSysSupport for FileSystem{
     type Error = FileSystemError;
 
     fn sb_valid(sb: &SuperBlock) -> bool {
-        // Step 1: Check Order
-        if !sb.inodestart == 1 { // Inode needs to start at index 1
-            return false
-        }
-        let mut ninodeblocks = get_ninodeblocks(sb);
-
-        let mut nbitmapblocks = get_nbitmapblocks(sb);
-
-        if ! (sb.inodestart  + ninodeblocks <= sb.bmapstart) {
-            // check overlap between inodes region and bitmap region
-            return false
-        }
-
-        if ! (sb.bmapstart  + nbitmapblocks <= sb.datastart) {
-            // check overlap between bitmap and data region
-            return false
-        }
-
-        if ! (sb.datastart  + sb.ndatablocks < sb.block_size) {
-            // check overlap between bitmap and data region
-            return false
-        }
-
-        // Step 2: Check size
-        if sb.nblocks < ninodeblocks + sb.ndatablocks + nbitmapblocks{
-            return false
-        }
-        return true
+        return sb_valid(sb);
     }
 
     fn mkfs<P: AsRef<Path>>(path: P, sb: &SuperBlock) -> Result<Self, Self::Error> {
         if !FSName::sb_valid(sb){
-            Err(FileSystemError::InvalidSuperBlock(*sb)) //TODO check this pointer?
+            Err(FileSystemError::InvalidSuperBlock())
         }
         else  {
             let  device_result = Device::new(path,sb.block_size,sb.nblocks);
@@ -119,13 +87,13 @@ impl FileSysSupport for FileSystem{
                 Ok(mut device) =>{
                     //place superblock at index 0
 
-                    write_sb(sb, &mut device);
-                    allocate_inoderegionblocks(&sb, &mut device);
-                    allocate_bitmapregion(&sb, &mut device);
-                    allocate_dataregion(&sb, &mut device);
-                    let mut fs = FileSystem::mountfs(device)?;
+                    write_sb(sb, &mut device)?;
+                    allocate_inoderegionblocks(&sb, &mut device)?;
+                    allocate_bitmapregion(&sb, &mut device)?;
+                    allocate_dataregion(&sb, &mut device)?;
+                    let  fs = FileSystem::mountfs(device)?;
 
-                    allocate_inodes(&mut fs);
+                    //allocate_inodes(&mut fs);
                     Ok(fs)
                 },
                 Err(e) => Err(FileSystemError::DeviceAPIError(e))
@@ -135,9 +103,9 @@ impl FileSysSupport for FileSystem{
 
     fn mountfs(dev: Device) -> Result<Self, Self::Error> {
         match dev.read_block(0) {
-            Ok(mut block) =>
+            Ok( block) =>
                 {
-                    let mut sb = &block.deserialize_from::<SuperBlock>(0)?;
+                    let  sb = &block.deserialize_from::<SuperBlock>(0)?;
                     if FSName::sb_valid(sb)
                         && dev.block_size == sb.block_size
                         && dev.nblocks == sb.nblocks
@@ -147,7 +115,7 @@ impl FileSysSupport for FileSystem{
                     }
                     else{
 
-                        Err(FileSystemError::InvalidSuperBlock(*sb)) //TODO check this pointer?
+                        Err(FileSystemError::InvalidSuperBlock())
                     }
                 }
             ,
@@ -171,19 +139,19 @@ impl BlockSupport for FileSystem {
     }
 
     fn b_put(&mut self, b: &Block) -> Result<(), Self::Error> {
-        let mut dev = self.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
+        let  dev = self.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
         return Ok(write_block(dev,b)?);
     }
 
     fn b_free(&mut self, i: u64) -> Result<(), Self::Error> {
-        set_bitmapbit(self, i, false)?;
+        let  dev = self.device.as_mut().ok_or_else(||FileSystemError::DeviceNotSet())?;
+        set_bitmapbit(&self.superblock, dev, i, false)?;
         Ok(())
     }
 
     fn b_zero(&mut self, i: u64) -> Result<(), Self::Error> {
         let datablock_index = i + self.superblock.datastart;
-        let mut block = self.b_get(datablock_index)?;
-        let mut newzeroblock = Block::new(datablock_index, vec![0; self.superblock.block_size as usize].into_boxed_slice()); //TODO last change
+        let  newzeroblock = Block::new(datablock_index, vec![0; self.superblock.block_size as usize].into_boxed_slice()); //TODO last change
         self.b_put(&newzeroblock)?;
         Ok(())
     }
@@ -209,7 +177,7 @@ impl BlockSupport for FileSystem {
                 let byteindex = byteindex.unwrap(); //get the index of the byte that has a free spot
                 let byte = byte_array.get(usize::from(byteindex)).unwrap();
                 let bitindex = 8 - 1 - byte.trailing_ones(); //moves the 1 to the correct position
-                let mut mutator = 0b00000001u8 << byte.trailing_ones(); //moves the 1 to the correct position
+                let  mutator = 0b00000001u8 << byte.trailing_ones(); //moves the 1 to the correct position
 
                 let to_write_byte = &[(*byte | mutator)];
 
@@ -220,9 +188,9 @@ impl BlockSupport for FileSystem {
                 let byteindex: u64 = u64::from(byteindex);
                 let datablockindex = blockindex * self.superblock.block_size * 8 + (byteindex) * 8 + u64::from(7 - bitindex);
 
-                if (datablockindex < self.superblock.ndatablocks) {
-                    self.b_zero(datablockindex);
-                    self.b_put(&block);
+                if datablockindex < self.superblock.ndatablocks {
+                    self.b_zero(datablockindex)?;
+                    self.b_put(&block)?;
                     return Ok(datablockindex)
                 }
             }
@@ -246,7 +214,6 @@ impl BlockSupport for FileSystem {
 
 // Here we define a submodule, called `my_tests`, that will contain your unit
 // tests for this module.
-// **TODO** define your own tests here. I have written down one test as an example of the syntax.
 // You can define more tests in different modules, and change the name of this module
 //
 // The `test` in the `#[cfg(test)]` annotation ensures that this code is only compiled when we're testing the code.
@@ -255,28 +222,34 @@ impl BlockSupport for FileSystem {
 // To learn more about testing, check the Testing chapter of the Rust
 // Book: https://doc.rust-lang.org/book/testing.html
 #[cfg(test)]
-mod Superblock_Tests {
+mod superblock_tests {
 
 
     use super::FSName;
-    use cplfs_api::controller::Device;
-    use cplfs_api::fs::{BlockSupport, FileSysSupport};
-    use cplfs_api::types::SuperBlock;
-    use std::path::{Path, PathBuf};
-    #[test]
 
+    use cplfs_api::fs::{FileSysSupport, BlockSupport};
+    use cplfs_api::types::SuperBlock;
+    use std::path::{PathBuf, Path};
+    use cplfs_api::controller::Device;
+
+    #[path = "utils.rs"]
+
+
+    #[test]
     fn trivial_unit_test() {
-        assert_eq!(FSName::sb_valid(&SUPERBLOCK_oversized), false);
-        assert_eq!(FSName::sb_valid(&SUPERBLOCK_oversized_2), true);
+        assert_eq!(FSName::sb_valid(&SUPERBLOCK_OVERSIZED), false);
+        assert_eq!(FSName::sb_valid(&SUPERBLOCK_GOOD), true);
         assert_eq!(FSName::sb_valid(&SUPERBLOCK_BAD_1), true);
         assert_eq!(FSName::sb_valid(&SUPERBLOCK_BAD_2), true);
         assert_eq!(FSName::sb_valid(&SUPERBLOCK_BAD_3), true);
     }
 
+
+
     static BLOCK_SIZE: u64 = 1000;
     static NBLOCKS: u64 = 10;
 
-    static SUPERBLOCK_oversized: SuperBlock = SuperBlock {
+    static SUPERBLOCK_OVERSIZED: SuperBlock = SuperBlock {
         block_size: BLOCK_SIZE,
         nblocks: NBLOCKS,
         ninodes: 1000,
@@ -286,7 +259,7 @@ mod Superblock_Tests {
         datastart: 6,
     };
 
-    static SUPERBLOCK_oversized_2: SuperBlock = SuperBlock {
+    static SUPERBLOCK_GOOD: SuperBlock = SuperBlock {
         block_size: BLOCK_SIZE,
         nblocks: NBLOCKS,
         ninodes: 6,
@@ -326,8 +299,6 @@ mod Superblock_Tests {
         datastart: 5,
     };
 
-
-
 }
 
 // If you want to write more complicated tests that create actual files on your system, take a look at `utils.rs` in the assignment, and how it is used in the `fs_tests` folder to perform the tests. I have imported it below to show you how it can be used.
@@ -336,35 +307,75 @@ mod Superblock_Tests {
 #[path = "../../api/fs-tests"]
 mod test_with_utils {
 
+
+    use crate::a_block_support::FSName;
+
+
+    use cplfs_api::fs::{FileSysSupport, BlockSupport};
+    use cplfs_api::types::SuperBlock;
+    use std::path::{PathBuf, Path};
+    use cplfs_api::controller::Device;
+
     #[path = "utils.rs"]
     mod utils;
 
+    static BLOCK_SIZE: u64 = 1000;
+    static NBLOCKS: u64 = 10;
+    static SUPERBLOCK_GOOD: SuperBlock = SuperBlock {
+        block_size: BLOCK_SIZE,
+        nblocks: NBLOCKS,
+        ninodes: 6,
+        inodestart: 1,
+        ndatablocks: 4,
+        bmapstart: 5,
+        datastart: 6,
+    };
 
+    fn disk_prep_path(name: &str) -> PathBuf {
+        utils::disk_prep_path(&("fs-images-a-".to_string() + name), "img")
+    }
 
-
+    //Create a fresh device
+    fn disk_setup(path: &Path) -> Device {
+        utils::disk_setup(path, BLOCK_SIZE, NBLOCKS)
+    }
 
     #[test]
-    fn unit_test() {
-        //The below method set up the parent folder "a_parent_unique_name" within the root directory  of this solution crate
-        //Also delete the file "image_file" within this folder if it already exists, so that it does not interfere with any later `mkfs` calls (this is useful if your previous test run failed, and the file did not get deleted)
-        //*WARNING* !Make sure that this folder name "a_parent_unique_name" is actually unique over different tests, because tests are executed in parallel by default!
-        //Returns the concatenated path, so that you can use the path further on, e.g. when creating a `Device` or `FileSystem`
+    fn complex_test(){
+        let path = disk_prep_path("test");
+        let mut my_fs = FSName::mkfs(&path, &SUPERBLOCK_GOOD).unwrap();
 
-        //! `let path = utils::disk_prep_path("a_parent_unique_name", "image_file");`
+        let zb = |i| utils::zero_block(i, BLOCK_SIZE);
+        for i in 1..NBLOCKS {
+            //Will fail if you sneak in inodesupport
+            assert_eq!(my_fs.b_get(i).unwrap(), zb(i));
+        }
 
-        //Things you want to test go here (check my tests in the API folder for examples)
-        //! ...
-        //! ...
+        let nb = utils::n_block(5, BLOCK_SIZE, 6);
+        my_fs.b_put(&nb).unwrap();
 
-        // If some disk actually created the file under `path` in your code, then you can uncomment the following call to clean it up:
-        //!  `utils::disk_unprep_path(&path);`
-        // This removes the image file and the parent directory at the end, so that no garbage is left in your file system
-        //*WARNING* if a Device `dev` is still in scope for the path `path`, then the above call will block (the device holds a lock on the memory-mapped file)
-        //You then have to use the following call instead:
+        let b = my_fs.b_get(5).unwrap();
+        assert_eq!(b, nb);
 
-        //! `utils::disk_destruct(dev);`
+        let nb_bis = utils::n_block(6, BLOCK_SIZE, 6);
+        my_fs.b_put(&nb_bis).unwrap();
+        my_fs.b_zero(1).unwrap(); //zero this block again
+        let b = my_fs.b_get(6).unwrap();
 
-        //This makes the device go out of scope first, before tearing down the parent folder and image file, thereby avoiding deadlock
+        assert_eq!(b, zb(6));
+
+        assert!(my_fs.b_zero(5).is_err()); //out of bounds
+
+/*
+        for i in 0..SUPERBLOCK_GOOD.ndatablocks {
+            assert!(my_fs.b_alloc().is_err());
+        }
+
+ */
+
+        let dev = my_fs.unmountfs();
+        utils::disk_destruct(dev);
+
     }
 }
 

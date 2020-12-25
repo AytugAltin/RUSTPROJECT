@@ -24,12 +24,19 @@
 //! ...
 //!
 
+use crate::a_block_support::FileSystem;
+/*
+use cplfs_api::fs::{InodeRWSupport, InodeSupport, FileSysSupport};
+use cplfs_api::types::Buffer;
+*/
 /// You are free to choose the name for your file system. As we will use
 /// automated tests when grading your assignment, indicate here the name of
 /// your file system data type so we can just use `FSName` instead of
 /// having to manually figure out the name.
 /// **TODO**: replace the below type by the type of your file system
-pub type FSName = ();
+pub type FSName = FileSystem;
+
+
 
 // **TODO** define your own tests here.
 

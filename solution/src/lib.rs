@@ -37,14 +37,14 @@
 //!
 //! # Rust Version
 //!
-//! **TODO**: indicate which *stable* version of Rust you are using. If you are using
+//!  indicate which *stable* version of Rust you are using. If you are using
 //! 1.47, you don't have to do anything. Otherwise, replace the version
 //! below with the output of `rustc --version`.
 //!
 //! VERSION: rustc 1.47 (2020-10-08)
 
 // This line forces you to write documentation for all important things.
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 // Note that the documentation starts with three slashes instead of two!
 // See https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html#making-useful-documentation-comments
 
@@ -61,7 +61,8 @@ pub mod d_path_support;
 pub mod e_inode_RW_support;
 pub mod f_indirect_inodes;
 pub mod g_caching_inodes;
-pub mod filesystem_errors; //TODO moet deze erbij of niet
-pub mod helpers; //TODO moet deze erbij of niet
 
 // Declare additional modules below or declare them in other modules.
+
+pub mod filesystem_errors;
+pub mod helpers;
