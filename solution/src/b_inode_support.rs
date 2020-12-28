@@ -7,11 +7,11 @@
 //! [`FileSysSupport`]: ../../cplfs_api/fs/trait.FileSysSupport.html
 //! [`BlockSupport`]: ../../cplfs_api/fs/trait.BlockSupport.html
 //! [`InodeSupport`]: ../../cplfs_api/fs/trait.InodeSupport.html
-//! Make sure this file does not contain any unaddressed `TODO`s anymore when you hand it in.
+//! Make sure this file does not contain any unaddressed `
 //!
 //! # Status
 //!
-//! **TODO**: Replace the question mark below with YES, NO, or PARTIAL to
+//!
 //! indicate the status of this assignment. If you want to tell something
 //! about this assignment to the grader, e.g., you have a bug you can't fix,
 //! or you want to explain your approach, write it down after the comments
@@ -148,7 +148,7 @@ impl BlockSupport for FileSystem {
         let newzeroblock = Block::new(
             datablock_index,
             vec![0; self.superblock.block_size as usize].into_boxed_slice(),
-        ); //TODO last change
+        );
         self.b_put(&newzeroblock)?;
         Ok(())
     }
@@ -204,7 +204,7 @@ impl BlockSupport for FileSystem {
         let mut firstblock = self.b_get(0)?;
         firstblock.serialize_into(&sup, 0)?;
         self.b_put(&firstblock)?;
-        Ok(()) //TODO check return type, is this oke to do or not?
+        Ok(())
     }
 }
 
@@ -261,7 +261,6 @@ impl InodeSupport for FileSystem {
     }
 
     fn i_trunc(&mut self, inode: &mut Self::Inode) -> Result<(), Self::Error> {
-        //TODO DO i need to raise error when these are not equal
         let ino = self.i_get(inode.inum)?;
 
         if &ino == inode {
@@ -273,8 +272,6 @@ impl InodeSupport for FileSystem {
         Ok(())
     }
 }
-
-// **TODO** define your own tests here.
 
 // WARNING: DO NOT TOUCH THE BELOW CODE -- IT IS REQUIRED FOR TESTING -- YOU WILL LOSE POINTS IF I MANUALLY HAVE TO FIX YOUR TESTS
 #[cfg(all(test, any(feature = "b", feature = "all")))]

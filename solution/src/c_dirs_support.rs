@@ -8,11 +8,11 @@
 //! [`BlockSupport`]: ../../cplfs_api/fs/trait.BlockSupport.html
 //! [`InodeSupport`]: ../../cplfs_api/fs/trait.InodeSupport.html
 //! [`DirectorySupport`]: ../../cplfs_api/fs/trait.DirectorySupport.html
-//! Make sure this file does not contain any unaddressed `TODO`s anymore when you hand it in.
+//! Make sure this file does not contain any unaddressed
 //!
 //! # Status
 //!
-//! **TODO**: Replace the question mark below with YES, NO, or PARTIAL to
+//!
 //! indicate the status of this assignment. If you want to tell something
 //! about this assignment to the grader, e.g., you have a bug you can't fix,
 //! or you want to explain your approach, write it down after the comments
@@ -276,7 +276,7 @@ impl DirectorySupport for FileSystemC {
 #[path = "../../api/fs-tests"]
 mod test_with_utils {
     use super::FSName;
-    use cplfs_api::fs::{DirectorySupport, FileSysSupport};
+    use cplfs_api::fs::{BlockSupport, DirectorySupport, FileSysSupport};
     use cplfs_api::types::SuperBlock;
     use std::path::PathBuf;
 
@@ -299,6 +299,7 @@ mod test_with_utils {
     fn unit_test() {
         let path = disk_prep_path("mkfs");
         let myfs = FSName::mkfs(&path, &SUPERBLOCK_GOOD).unwrap();
+        assert_eq!(myfs.sup_get().unwrap(), SUPERBLOCK_GOOD);
 
         let name1 = "test.:d"; //should stop reading at the end string char
         assert!(FSName::new_de(0, name1).is_none());

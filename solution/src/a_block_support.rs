@@ -5,11 +5,10 @@
 //!
 //! [`FileSysSupport`]: ../../cplfs_api/fs/trait.FileSysSupport.html
 //! [`BlockSupport`]: ../../cplfs_api/fs/trait.BlockSupport.html
-//! Make sure this file does not contain any unaddressed `TODO`s anymore when you hand it in.
+//! Make sure this file does not contain any unaddressed
 //!
 //! # Status
 //!
-//! **TODO**: Replace the question mark below with YES, NO, or PARTIAL to
 //! indicate the status of this assignment. If you want to tell something
 //! about this assignment to the grader, e.g., you have a bug you can't fix,
 //! or you want to explain your approach, write it down after the comments
@@ -144,7 +143,7 @@ impl BlockSupport for FileSystem {
         let newzeroblock = Block::new(
             datablock_index,
             vec![0; self.superblock.block_size as usize].into_boxed_slice(),
-        ); //TODO last change
+        );
         self.b_put(&newzeroblock)?;
         Ok(())
     }
@@ -200,7 +199,7 @@ impl BlockSupport for FileSystem {
         let mut firstblock = self.b_get(0)?;
         firstblock.serialize_into(&sup, 0)?;
         self.b_put(&firstblock)?;
-        Ok(()) //TODO check return type, is this oke to do or not?
+        Ok(())
     }
 }
 
@@ -221,7 +220,7 @@ mod superblock_tests {
     use cplfs_api::fs::FileSysSupport;
     use cplfs_api::types::SuperBlock;
 
-    #[path = "utils.rs"]
+    //#[path = "utils.rs"]
     #[test]
     fn trivial_unit_test() {
         assert_eq!(FSName::sb_valid(&SUPERBLOCK_OVERSIZED), false);
@@ -293,10 +292,9 @@ mod test_with_utils {
 
     use crate::a_block_support::FSName;
 
-    use cplfs_api::controller::Device;
     use cplfs_api::fs::{BlockSupport, FileSysSupport};
     use cplfs_api::types::SuperBlock;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     #[path = "utils.rs"]
     mod utils;
@@ -315,11 +313,6 @@ mod test_with_utils {
 
     fn disk_prep_path(name: &str) -> PathBuf {
         utils::disk_prep_path(&("fs-images-a-".to_string() + name), "img")
-    }
-
-    //Create a fresh device
-    fn disk_setup(path: &Path) -> Device {
-        utils::disk_setup(path, BLOCK_SIZE, NBLOCKS)
     }
 
     #[test]
@@ -343,17 +336,6 @@ mod test_with_utils {
         my_fs.b_put(&nb_bis).unwrap();
         my_fs.b_zero(1).unwrap(); //zero this block again
         let b = my_fs.b_get(6).unwrap();
-
-        assert_eq!(b, zb(6));
-
-        assert!(my_fs.b_zero(5).is_err()); //out of bounds
-
-        /*
-               for i in 0..SUPERBLOCK_GOOD.ndatablocks {
-                   assert!(my_fs.b_alloc().is_err());
-               }
-
-        */
 
         let dev = my_fs.unmountfs();
         utils::disk_destruct(dev);

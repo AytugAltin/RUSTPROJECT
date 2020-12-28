@@ -52,17 +52,17 @@
 //!
 //! At the end, write some tests that convincingly show that your implementation indeed supports cached inodes.
 //!
-//! Make sure this file does not contain any unaddressed `TODO`s anymore when you hand it in.
+//! Make sure this file does not contain any unaddressed
 //!
 //! # Status
 //!
-//! **TODO**: Replace the question mark below with YES, NO, or PARTIAL to
+//!
 //! indicate the status of this assignment. If you want to tell something
 //! about this assignment to the grader, e.g., you have a bug you can't fix,
 //! or you want to explain your approach, write it down after the comments
 //! section. If you had no major issues and everything works, there is no need to write any comments.
 //!
-//! COMPLETED: ?
+//! COMPLETED: NO
 //!
 //! COMMENTS:
 //!

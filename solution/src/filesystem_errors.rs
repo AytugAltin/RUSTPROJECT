@@ -12,7 +12,6 @@ use std::fmt::Formatter;
 pub enum FileSystemError {
     /// This error is raised whe the given superblock is invalid
     InvalidSuperBlock(),
-    //TODO insert possible stuff
     /// This error is a conversion from an API error and is raised when there occurs when interacting with a Device
     DeviceAPIError(#[from] APIError),
     /// This error is raised whenever a Device is not set and we try to reach for the Devide
@@ -39,11 +38,14 @@ pub enum FileSystemError {
 
     /// When a directory has not been found when earching with its name.
     DirectoryNotFound(),
+
+    ///Raised when reading a part of a block will result in an error
+    ReadError(),
 }
 
 impl fmt::Display for FileSystemError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self{ //TODO add parameters in text
+        match self{
             FileSystemError::InvalidSuperBlock() =>
                 write!(f,"Invalid superblock"),
             FileSystemError::DeviceAPIError(api_error) =>
@@ -65,7 +67,9 @@ impl fmt::Display for FileSystemError {
             FileSystemError::INodeNotFoundNotUpToDate() =>
                 write!(f,"Inode not up to date with the one in the filesystem"),
             FileSystemError::DirectoryNotFound() =>
-                write!(f,"Directory not found in the filesystem")
+                write!(f,"Directory not found in the filesystem"),
+            FileSystemError::ReadError() =>
+                write!(f,"Something went wrong reading a Block/Inode")
         }
     }
 }
